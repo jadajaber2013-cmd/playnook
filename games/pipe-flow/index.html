@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pipe Flow</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #13284a, #0a1528); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span, #hud button { background: #ffffff18; border: 0; color: #fff; font: inherit; font-weight: 800; padding: 8px 14px; border-radius: 999px; }
+  #hud button { cursor: pointer; }
+  canvas { display: block; border-radius: 16px; box-shadow: 0 20px 50px #0008; cursor: pointer; }
+  #win { position: fixed; inset: 0; display: grid; place-items: center; background: #0008; text-align: center; font-size: 30px; font-weight: 900; }
+  #win[hidden] { display: none; }
+  #win small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #win button { border: 0; border-radius: 999px; padding: 12px 22px; background: #4dabf7; color: #fff; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="lvl">Level 1</span><span id="moves">Turns: 0</span><button type="button" id="new">↻ New board</button></div>
+  <canvas id="c"></canvas>
+  <div style="font-size:12px;opacity:.7;text-align:center">Tap a pipe to rotate it · Keyboard: arrows move, Space rotates</div>
+</div>
+<div id="win" hidden><div>💧 All connected!<small id="winText"></small><button type="button" id="next">Next level ▶</button></div></div>
+<script>
+(() => {
+  // Each tile is a 4-bit mask: 1 = up, 2 = right, 4 = down, 8 = left.
+  const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
+  const c = document.getElementById("c"), x = c.getContext("2d");
+  let lvl = 1, N, tiles, rot, src, cell, turns, flow = new Map(), anim = [], cur = 0, kbd = false, won = false, t = 0;
+  try { lvl = +localStorage.getItem("pipe-flow-level") || 1; } catch (e) {}
+  const rotMask = (m, r) => { r = ((r % 4) + 4) % 4; return ((m << r) | (m >> (4 - r))) & 15; };
+  function gen() {
+    N = Math.min(4 + Math.floor((lvl - 1) / 2), 9);
+    tiles = new Array(N * N).fill(0);
+    // random spanning tree (randomised DFS) guarantees one connected solution
+    src = Math.floor(N * N / 2);
+    const seen = new Set([src]), stack = [src];
+    while (stack.length) {
+      const i = stack[stack.length - 1], r = Math.floor(i / N), col = i % N;
+      const opts = [0, 1, 2, 3].filter((d) => { const rr = r + DY[d], cc = col + DX[d]; return rr >= 0 && rr < N && cc >= 0 && cc < N && !seen.has(rr * N + cc); });
+      if (!opts.length) { stack.pop(); continue; }
+      const d = opts[Math.floor(Math.random() * opts.length)], j = (r + DY[d]) * N + col + DX[d];
+      tiles[i] |= 1 << d; tiles[j] |= 1 << ((d + 2) % 4); seen.add(j); stack.push(j);
+    }
+    rot = tiles.map(() => Math.floor(Math.random() * 4));
+    if (connected().size === N * N) return gen();
+    anim = tiles.map(() => 0); turns = 0; won = false; cur = src;
+    document.getElementById("lvl").textContent = "Level " + lvl;
+    layout();
+  }
+  const mask = (i) => rotMask(tiles[i], rot[i]);
+  function connected() {
+    const seen = new Map([[src, 0]]), q = [src];
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k], r = Math.floor(i / N), col = i % N, m = mask(i);
+      for (let d = 0; d < 4; d++) if (m & (1 << d)) {
+        const rr = r + DY[d], cc = col + DX[d]; if (rr < 0 || rr >= N || cc < 0 || cc >= N) continue;
+        const j = rr * N + cc; if (!seen.has(j) && mask(j) & (1 << ((d + 2) % 4))) { seen.set(j, seen.get(i) + 1); q.push(j); }
+      }
+    }
+    return seen;
+  }
+  function layout() {
+    cell = Math.floor(Math.min((innerWidth - 24) / N, (innerHeight - 130) / N, 80));
+    const d = Math.min(devicePixelRatio || 1, 2); c.style.width = c.style.height = cell * N + "px"; c.width = c.height = cell * N * d; x.setTransform(d, 0, 0, d, 0, 0);
+  }
+  function turn(i) {
+    if (won) return;
+    rot[i]++; anim[i] = 1; turns++; document.getElementById("moves").textContent = "Turns: " + turns;
+    const conn = connected();
+    flow = conn;
+    if (conn.size === N * N) {
+      won = true; flowT = 0;
+      if (lvl + 1 > (+localStorage.getItem("pipe-flow-level") || 1)) try { localStorage.setItem("pipe-flow-level", lvl + 1); } catch (e) {}
+      document.getElementById("winText").textContent = `Level ${lvl} solved in ${turns} turns.`;
+      setTimeout(() => (document.getElementById("win").hidden = false), 1300);
+    }
+  }
+  let flowT = 0;
+  function draw(dt) {
+    t += dt; if (won) flowT += dt * 8;
+    x.fillStyle = "#0e1d36"; x.fillRect(0, 0, cell * N, cell * N);
+    const conn = flow;
+    for (let i = 0; i < N * N; i++) {
+      const r = Math.floor(i / N), col = i % N, cx = col * cell + cell / 2, cy = r * cell + cell / 2;
+      x.fillStyle = (r + col) % 2 ? "#13274a" : "#112241"; x.fillRect(col * cell, r * cell, cell, cell);
+      if (i === cur && kbd) { x.strokeStyle = "#7cf7ff"; x.lineWidth = 3; x.strokeRect(col * cell + 2, r * cell + 2, cell - 4, cell - 4); }
+      anim[i] = Math.max(0, anim[i] - dt * 7);
+      const ang = (rot[i] - anim[i]) * Math.PI / 2;
+      const on = conn.has(i), lit = on && (!won || conn.get(i) <= flowT);
+      x.save(); x.translate(cx, cy); x.rotate(ang);
+      for (const pass of [0, 1]) {
+        x.strokeStyle = pass ? (lit ? "#4dabf7" : "#8a94a8") : "#00000055"; x.lineWidth = cell * (pass ? 0.22 : 0.32); x.lineCap = "round";
+        for (let d = 0; d < 4; d++) if (tiles[i] & (1 << d)) { x.beginPath(); x.moveTo(0, 0); x.lineTo(DX[d] * cell / 2, DY[d] * cell / 2); x.stroke(); }
+        if (lit && pass) { x.strokeStyle = "#d0ebff"; x.lineWidth = cell * 0.06; x.setLineDash([cell * 0.12, cell * 0.18]); x.lineDashOffset = -t * cell; for (let d = 0; d < 4; d++) if (tiles[i] & (1 << d)) { x.beginPath(); x.moveTo(0, 0); x.lineTo(DX[d] * cell / 2, DY[d] * cell / 2); x.stroke(); } x.setLineDash([]); }
+      }
+      x.restore();
+      x.fillStyle = lit ? "#4dabf7" : "#8a94a8"; x.beginPath(); x.arc(cx, cy, cell * 0.13, 0, 7); x.fill();
+      if (i === src) { x.fillStyle = "#ffd23f"; x.beginPath(); x.arc(cx, cy, cell * 0.22, 0, 7); x.fill(); x.font = `${cell * 0.3}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("💧", cx, cy + 1); }
+      else if ([1, 2, 4, 8].includes(tiles[i])) { x.fillStyle = lit ? "#51cf66" : "#5c6b85"; x.beginPath(); x.roundRect(cx - cell * 0.18, cy - cell * 0.18, cell * 0.36, cell * 0.36, cell * 0.08); x.fill(); x.font = `${cell * 0.24}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(lit ? "🌻" : "🌱", cx, cy + 1); }
+    }
+  }
+  let last = 0; function loop(now) { const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; draw(dt); requestAnimationFrame(loop); }
+  c.addEventListener("pointerdown", (e) => { const r = c.getBoundingClientRect(), col = Math.floor((e.clientX - r.left) / cell), row = Math.floor((e.clientY - r.top) / cell); if (col >= 0 && col < N && row >= 0 && row < N) { kbd = false; cur = row * N + col; turn(cur); } });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); kbd = true; const r = Math.max(0, Math.min(N - 1, Math.floor(cur / N) + m[0])), col = Math.max(0, Math.min(N - 1, cur % N + m[1])); cur = r * N + col; }
+    if (k === " " || k === "enter") { e.preventDefault(); if (!document.getElementById("win").hidden) document.getElementById("next").click(); else { kbd = true; turn(cur); } }
+  });
+  document.getElementById("new").onclick = () => { gen(); flow = connected(); };
+  document.getElementById("next").onclick = () => { document.getElementById("win").hidden = true; lvl++; gen(); flow = connected(); };
+  addEventListener("resize", layout);
+  gen(); flow = connected(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

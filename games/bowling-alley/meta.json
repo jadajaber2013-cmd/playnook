@@ -1,0 +1,21 @@
+{
+  "title": "Bowling Alley",
+  "category": "Sports",
+  "description": "Ten frames of bowling fun. Line up your shot, add some spin and knock down all ten pins for a strike!",
+  "instructions": [
+    "Move left and right to line up, then click or press Space to set direction and power.",
+    "On touch screens, swipe up the lane to bowl — curve your swipe for spin.",
+    "Knock down all 10 pins with your first ball for a strike.",
+    "Highest score after 10 frames wins."
+  ],
+  "tags": [
+    "bowling",
+    "pins",
+    "strike",
+    "frames"
+  ],
+  "added": "2026-10-15",
+  "popularity": 77,
+  "license": "Original",
+  "source": "Original work"
+}

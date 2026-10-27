@@ -1,0 +1,23 @@
+{
+  "title": "Snake",
+  "category": "Arcade",
+  "description": "The classic snake game, freshly made for your browser. Guide the hungry snake to eat apples and grow longer — but don't bump into the walls or your own tail! The snake speeds up as your score climbs.",
+  "instructions": [
+    "Use the arrow keys or WASD to steer the snake.",
+    "On a phone or tablet, swipe on the board or use the on-screen arrow pad.",
+    "Eat the red apples to grow and score points.",
+    "Avoid the walls and your own tail.",
+    "Press P to pause and Space to start again."
+  ],
+  "tags": [
+    "snake",
+    "classic",
+    "retro",
+    "arcade",
+    "one-player"
+  ],
+  "added": "2026-10-20",
+  "popularity": 95,
+  "license": "Original",
+  "source": "Original work"
+}

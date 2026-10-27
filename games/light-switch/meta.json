@@ -1,0 +1,21 @@
+{
+  "title": "Light Switch",
+  "category": "Puzzle",
+  "description": "Every switch flips itself and its neighbours. Can you turn off all the lights? Fifty handmade-by-maths levels that start easy and get tricky.",
+  "instructions": [
+    "Click or tap a light to flip it and the lights next to it.",
+    "Keyboard: move with the arrow keys, flip with Space or Enter.",
+    "Turn every light off to finish the level.",
+    "Stuck? Press R to restart the level."
+  ],
+  "tags": [
+    "lights",
+    "logic",
+    "levels",
+    "brain"
+  ],
+  "added": "2026-09-09",
+  "popularity": 66,
+  "license": "Original",
+  "source": "Original work"
+}

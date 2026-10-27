@@ -1,0 +1,21 @@
+{
+  "title": "Star Defender",
+  "category": "Arcade",
+  "description": "Defend the galaxy from waves of wobbly alien saucers. Your ship fires automatically — dodge their bombs and see how many waves you can survive.",
+  "instructions": [
+    "Move with the arrow keys or WASD.",
+    "On touch screens, drag anywhere to move the ship.",
+    "Your ship shoots by itself. Avoid the red bombs.",
+    "Press P to pause."
+  ],
+  "tags": [
+    "shooter",
+    "space",
+    "aliens",
+    "waves"
+  ],
+  "added": "2026-09-18",
+  "popularity": 86,
+  "license": "Original",
+  "source": "Original work"
+}

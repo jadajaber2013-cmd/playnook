@@ -1,0 +1,21 @@
+{
+  "title": "Slalom Ski",
+  "category": "Racing",
+  "description": "Carve down a snowy mountain and pass through the slalom gates. Miss a gate and you lose time — how fast can you reach the bottom?",
+  "instructions": [
+    "Steer with the arrow keys or A and D.",
+    "On touch screens, hold the left or right side of the screen.",
+    "Pass between each pair of flags.",
+    "Avoid trees and rocks."
+  ],
+  "tags": [
+    "ski",
+    "snow",
+    "slalom",
+    "winter"
+  ],
+  "added": "2026-10-01",
+  "popularity": 63,
+  "license": "Original",
+  "source": "Original work"
+}

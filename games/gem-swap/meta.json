@@ -1,0 +1,21 @@
+{
+  "title": "Gem Swap",
+  "category": "Puzzle",
+  "description": "Swap neighbouring gems to line up three or more of the same colour. Chain reactions and big matches score extra — reach the target score before you run out of moves.",
+  "instructions": [
+    "Drag or swipe a gem onto a neighbour to swap them.",
+    "Or click one gem, then click a neighbour.",
+    "Keyboard: arrows move, Space selects, then an arrow swaps.",
+    "Match 3 or more in a row or column."
+  ],
+  "tags": [
+    "match 3",
+    "gems",
+    "swap",
+    "combo"
+  ],
+  "added": "2026-10-10",
+  "popularity": 91,
+  "license": "Original",
+  "source": "Original work"
+}

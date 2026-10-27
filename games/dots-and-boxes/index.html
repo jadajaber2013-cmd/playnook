@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Dots and Boxes</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: #fdf6e3; color: #1c1638; user-select: none; -webkit-user-select: none; touch-action: manipulation; background-image: linear-gradient(#e8dfc7 1px, transparent 1px); background-size: 100% 28px; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span, #hud button { background: #fff; border: 2px solid #1c1638; color: #1c1638; font: inherit; font-weight: 800; padding: 6px 12px; border-radius: 999px; }
+  #hud button { cursor: pointer; } #hud button.on { background: #1c1638; color: #fff; }
+  #score { display: flex; gap: 12px; font-size: 20px; font-weight: 900; }
+  #score span { padding: 4px 14px; border-radius: 12px; transition: transform .2s; }
+  #score .on { transform: scale(1.12); box-shadow: 0 0 0 3px currentColor; }
+  canvas { display: block; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" data-s="3">3×3</button><button type="button" data-s="4">4×4</button><button type="button" data-s="5">5×5</button><button type="button" id="new">↻ New</button></div>
+  <div id="score"><span id="sMe" style="color:#e8590c">You 0</span><span id="sCpu" style="color:#1c7ed6">CPU 0</span></div>
+  <canvas id="c"></canvas>
+  <div id="status" style="font-weight:800;min-height:1.3em">Draw a line between two dots</div>
+  <div style="font-size:12px;opacity:.6">Keyboard: arrows move · Space draws · Tab switches direction</div>
+</div>
+<script>
+(() => {
+  const c = document.getElementById("c"), x = c.getContext("2d"), statusEl = document.getElementById("status");
+  let S = 4, gap, pad, H, V, box, turn, scores, hover = null, kcur = { h: true, r: 0, c: 0 }, kbd = false, anims = [], t = 0, busy = false;
+  try { S = +localStorage.getItem("dots-size") || 4; } catch (e) {}
+  const COL = { 1: "#e8590c", 2: "#1c7ed6" };
+  function layout() { gap = Math.floor(Math.min((innerWidth - 50) / S, (innerHeight - 200) / S, 110)); pad = 22; const size = gap * S + pad * 2, d = Math.min(devicePixelRatio || 1, 2); c.style.width = c.style.height = size + "px"; c.width = c.height = size * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  function newGame() {
+    H = Array.from({ length: S + 1 }, () => new Array(S).fill(0)); V = Array.from({ length: S }, () => new Array(S + 1).fill(0)); box = Array.from({ length: S }, () => new Array(S).fill(0));
+    turn = 1; scores = { 1: 0, 2: 0 }; anims = []; busy = false; layout(); hud();
+    document.querySelectorAll("[data-s]").forEach((e) => e.classList.toggle("on", +e.dataset.s === S));
+  }
+  const sides = (r, col) => (H[r][col] ? 1 : 0) + (H[r + 1][col] ? 1 : 0) + (V[r][col] ? 1 : 0) + (V[r][col + 1] ? 1 : 0);
+  const boxesOf = (l) => (l.h ? [[l.r - 1, l.c], [l.r, l.c]] : [[l.r, l.c - 1], [l.r, l.c]]).filter(([r, col]) => r >= 0 && r < S && col >= 0 && col < S);
+  const isSet = (l) => (l.h ? H[l.r][l.c] : V[l.r][l.c]);
+  function allFree() { const out = []; for (let r = 0; r <= S; r++) for (let col = 0; col < S; col++) if (!H[r][col]) out.push({ h: true, r, c: col }); for (let r = 0; r < S; r++) for (let col = 0; col <= S; col++) if (!V[r][col]) out.push({ h: false, r, c: col }); return out; }
+  function draw1(l, who) {
+    if (isSet(l)) return false;
+    if (l.h) H[l.r][l.c] = who; else V[l.r][l.c] = who;
+    anims.push({ l, k: 0, who });
+    let got = 0;
+    for (const [r, col] of boxesOf(l)) if (sides(r, col) === 4 && !box[r][col]) { box[r][col] = who; got++; anims.push({ box: [r, col], k: 0, who }); }
+    scores[who] += got; tone(got ? 700 : 420);
+    if (!allFree().length) { hud(); statusEl.textContent = scores[1] > scores[2] ? "🏆 You win!" : scores[1] < scores[2] ? "🤖 Computer wins" : "🤝 Draw!"; busy = true; return true; }
+    if (!got) turn = 3 - turn;
+    hud();
+    if (turn === 2) { busy = true; setTimeout(cpu, 450); } else busy = false;
+    return true;
+  }
+  function cpu() {
+    const free = allFree(); if (!free.length) return;
+    const gain = (l) => boxesOf(l).filter(([r, col]) => sides(r, col) === 3).length;
+    const gives = (l) => boxesOf(l).filter(([r, col]) => sides(r, col) === 2).length;
+    let pick = free.find((l) => gain(l) > 0);
+    if (!pick) { const safe = free.filter((l) => !gives(l)); if (safe.length) pick = safe[Math.floor(Math.random() * safe.length)]; }
+    if (!pick) { // sacrifice the smallest chain
+      let best = Infinity;
+      for (const l of free) { const n = chainSize(l); if (n < best) { best = n; pick = l; } }
+    }
+    busy = false; turn = 2; draw1(pick, 2);
+  }
+  function chainSize(l) { // simulate how many boxes the opponent could grab after this move
+    const sH = H.map((r) => r.slice()), sV = V.map((r) => r.slice()); let n = 0;
+    if (l.h) H[l.r][l.c] = 1; else V[l.r][l.c] = 1;
+    let again = true;
+    while (again) { again = false; for (const f of allFree()) if (boxesOf(f).some(([r, col]) => sides(r, col) === 3)) { if (f.h) H[f.r][f.c] = 1; else V[f.r][f.c] = 1; n++; again = true; break; } }
+    H = sH; V = sV; return n;
+  }
+  let audio; function tone(f) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.1, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.1); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.1); } catch (e) {} }
+  function hud() {
+    document.getElementById("sMe").textContent = "You " + scores[1]; document.getElementById("sCpu").textContent = "CPU " + scores[2];
+    document.getElementById("sMe").classList.toggle("on", turn === 1); document.getElementById("sCpu").classList.toggle("on", turn === 2);
+    if (allFree().length) statusEl.textContent = turn === 1 ? "Your turn ✏️" : "Computer is drawing…";
+  }
+  const P = (r, col) => [pad + col * gap, pad + r * gap];
+  function draw(dt) {
+    t += dt;
+    x.clearRect(0, 0, c.width, c.height);
+    for (let r = 0; r < S; r++) for (let col = 0; col < S; col++) if (box[r][col]) {
+      const a = anims.find((q) => q.box && q.box[0] === r && q.box[1] === col), k = a ? Math.min(1, a.k) : 1, [px, py] = P(r, col);
+      x.fillStyle = COL[box[r][col]] + "33"; const s = gap * (0.3 + 0.7 * k); x.fillRect(px + (gap - s) / 2, py + (gap - s) / 2, s, s);
+      x.font = `900 ${gap * 0.4 * k}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = COL[box[r][col]]; x.fillText(box[r][col] === 1 ? "★" : "●", px + gap / 2, py + gap / 2);
+    }
+    const line = (l, col, w, k = 1) => { const [x1, y1] = P(l.r, l.c), [x2, y2] = l.h ? P(l.r, l.c + 1) : P(l.r + 1, l.c); x.strokeStyle = col; x.lineWidth = w; x.lineCap = "round"; x.beginPath(); x.moveTo(x1, y1); x.lineTo(x1 + (x2 - x1) * k, y1 + (y2 - y1) * k); x.stroke(); };
+    for (let r = 0; r <= S; r++) for (let col = 0; col < S; col++) if (H[r][col]) { const a = anims.find((q) => q.l && q.l.h && q.l.r === r && q.l.c === col); line({ h: true, r, c: col }, COL[H[r][col]], 6, a ? Math.min(1, a.k) : 1); }
+    for (let r = 0; r < S; r++) for (let col = 0; col <= S; col++) if (V[r][col]) { const a = anims.find((q) => q.l && !q.l.h && q.l.r === r && q.l.c === col); line({ h: false, r, c: col }, COL[V[r][col]], 6, a ? Math.min(1, a.k) : 1); }
+    const hv = kbd ? kcur : hover;
+    if (hv && !isSet(hv) && turn === 1 && !busy) line(hv, "#e8590c66", 6);
+    for (const a of anims) a.k += dt * 5; anims = anims.filter((a) => a.k < 1.2);
+    for (let r = 0; r <= S; r++) for (let col = 0; col <= S; col++) { const [px, py] = P(r, col); x.fillStyle = "#1c1638"; x.beginPath(); x.arc(px, py, 6, 0, 7); x.fill(); }
+  }
+  function nearest(e) {
+    const rc = c.getBoundingClientRect(), px = e.clientX - rc.left - pad, py = e.clientY - rc.top - pad;
+    const fr = py / gap, fc = px / gap, r = Math.round(fr), col = Math.round(fc);
+    const dh = Math.abs(fr - r), dv = Math.abs(fc - col);
+    if (dh < dv) { const cc = Math.floor(fc); if (r >= 0 && r <= S && cc >= 0 && cc < S) return { h: true, r, c: cc }; }
+    else { const rr = Math.floor(fr); if (rr >= 0 && rr < S && col >= 0 && col <= S) return { h: false, r: rr, c: col }; }
+    return null;
+  }
+  c.addEventListener("pointermove", (e) => { kbd = false; hover = nearest(e); });
+  c.addEventListener("pointerdown", (e) => { kbd = false; const l = nearest(e); if (l && turn === 1 && !busy) draw1(l, 1); });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m || k === "tab") { e.preventDefault(); kbd = true; if (k === "tab") kcur.h = !kcur.h; else { kcur.r += m[0]; kcur.c += m[1]; } kcur.r = Math.max(0, Math.min(kcur.h ? S : S - 1, kcur.r)); kcur.c = Math.max(0, Math.min(kcur.h ? S - 1 : S, kcur.c)); }
+    if ((k === " " || k === "enter") && turn === 1 && !busy) { e.preventDefault(); draw1({ ...kcur }, 1); }
+  });
+  document.querySelectorAll("[data-s]").forEach((e) => (e.onclick = () => { S = +e.dataset.s; try { localStorage.setItem("dots-size", S); } catch (er) {} newGame(); }));
+  document.getElementById("new").onclick = newGame;
+  addEventListener("resize", layout);
+  let last = 0; function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; draw(dt); requestAnimationFrame(loop); }
+  newGame(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

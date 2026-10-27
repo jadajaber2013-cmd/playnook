@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Four in a Row</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #1e3a8a, #0b1638); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span, #hud button { background: #ffffff18; border: 0; color: #fff; font: inherit; font-weight: 800; padding: 7px 13px; border-radius: 999px; }
+  #hud button { cursor: pointer; } #hud button.on { background: #ffd23f; color: #3a2400; }
+  #status { font-size: 20px; font-weight: 900; min-height: 1.3em; }
+  canvas { display: block; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" data-l="1">Easy</button><button type="button" data-l="2">Medium</button><button type="button" data-l="3">Hard</button><span id="score">You 0 · CPU 0</span><button type="button" id="new">↻ New</button></div>
+  <div id="status">Your turn — you're 🔴</div>
+  <canvas id="c"></canvas>
+  <div style="font-size:12px;opacity:.7">Tap a column · Keyboard: ← → and Space, or keys 1–7</div>
+</div>
+<script>
+(() => {
+  const C = 7, R = 6;
+  const c = document.getElementById("c"), x = c.getContext("2d"), statusEl = document.getElementById("status");
+  let cell, b, turn, over, falling = null, hover = 3, level = 2, score = { you: 0, cpu: 0 }, winLine = null, t = 0, starter = 1;
+  try { level = +localStorage.getItem("four-level") || 2; score = JSON.parse(localStorage.getItem("four-score")) || score; } catch (e) {}
+  function layout() { cell = Math.floor(Math.min((innerWidth - 20) / C, (innerHeight - 140) / (R + 1), 86)); const d = Math.min(devicePixelRatio || 1, 2); c.style.width = cell * C + "px"; c.style.height = cell * (R + 1) + "px"; c.width = cell * C * d; c.height = cell * (R + 1) * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", layout); layout();
+  function newGame() {
+    b = Array.from({ length: R }, () => new Array(C).fill(0)); over = false; winLine = null; falling = null;
+    document.querySelectorAll("[data-l]").forEach((e) => e.classList.toggle("on", +e.dataset.l === level));
+    document.getElementById("score").textContent = `You ${score.you} · CPU ${score.cpu}`;
+    turn = starter; starter = 3 - starter;
+    statusEl.textContent = turn === 1 ? "Your turn — you're 🔴" : "Computer is thinking…";
+    if (turn === 2) setTimeout(cpuMove, 500);
+  }
+  const rowFor = (g, col) => { for (let r = R - 1; r >= 0; r--) if (!g[r][col]) return r; return -1; };
+  function lineAt(g, r, col) {
+    const p = g[r][col]; if (!p) return null;
+    for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+      const cells = [[r, col]];
+      for (const s of [1, -1]) { let rr = r + dr * s, cc = col + dc * s; while (rr >= 0 && rr < R && cc >= 0 && cc < C && g[rr][cc] === p) { cells.push([rr, cc]); rr += dr * s; cc += dc * s; } }
+      if (cells.length >= 4) return cells;
+    }
+    return null;
+  }
+  function evalWindow(w) { const me = w.filter((v) => v === 2).length, you = w.filter((v) => v === 1).length; if (me && you) return 0; if (me === 3) return 50; if (me === 2) return 10; if (you === 3) return -60; if (you === 2) return -10; return 0; }
+  function heuristic(g) {
+    let s = 0;
+    for (let r = 0; r < R; r++) if (g[r][3] === 2) s += 6; else if (g[r][3] === 1) s -= 6;
+    for (let r = 0; r < R; r++) for (let col = 0; col < C; col++) for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+      const er = r + dr * 3, ec = col + dc * 3; if (er < 0 || er >= R || ec < 0 || ec >= C) continue;
+      s += evalWindow([0, 1, 2, 3].map((k) => g[r + dr * k][col + dc * k]));
+    }
+    return s;
+  }
+  function minimax(g, depth, a, bt, maxing) {
+    const moves = [3, 2, 4, 1, 5, 0, 6].filter((col) => g[0][col] === 0);
+    if (!moves.length) return 0;
+    if (depth === 0) return heuristic(g);
+    let best = maxing ? -Infinity : Infinity;
+    for (const col of moves) {
+      const r = rowFor(g, col); g[r][col] = maxing ? 2 : 1;
+      let v = lineAt(g, r, col) ? (maxing ? 100000 + depth : -100000 - depth) : minimax(g, depth - 1, a, bt, !maxing);
+      g[r][col] = 0;
+      if (maxing) { best = Math.max(best, v); a = Math.max(a, v); } else { best = Math.min(best, v); bt = Math.min(bt, v); }
+      if (bt <= a) break;
+    }
+    return best;
+  }
+  function cpuMove() {
+    if (over) return;
+    const depth = [0, 1, 3, 5][level], moves = [3, 2, 4, 1, 5, 0, 6].filter((col) => b[0][col] === 0);
+    let col;
+    if (level === 1 && Math.random() < 0.5) col = moves[Math.floor(Math.random() * moves.length)];
+    else {
+      let best = -Infinity, choices = [];
+      for (const m of moves) { const r = rowFor(b, m); b[r][m] = 2; const v = lineAt(b, r, m) ? 1e6 : minimax(b, depth, -Infinity, Infinity, false); b[r][m] = 0; if (v > best) { best = v; choices = [m]; } else if (v === best) choices.push(m); }
+      col = choices[Math.floor(Math.random() * choices.length)];
+    }
+    drop(col, 2);
+  }
+  function drop(col, who) {
+    const r = rowFor(b, col); if (r < 0 || falling || over) return;
+    falling = { col, r, who, y: -0.6, v: 0 };
+  }
+  function land() {
+    const { col, r, who } = falling; falling = null; b[r][col] = who;
+    const line = lineAt(b, r, col);
+    if (line) { over = true; winLine = line; if (who === 1) score.you++; else score.cpu++; statusEl.textContent = who === 1 ? "🎉 You win! Press N or tap ↻" : "🤖 Computer wins. Press N for another"; }
+    else if (b[0].every(Boolean)) { over = true; statusEl.textContent = "🤝 It's a draw!"; }
+    else { turn = 3 - who; statusEl.textContent = turn === 1 ? "Your turn — you're 🔴" : "Computer is thinking…"; if (turn === 2) setTimeout(cpuMove, 350); }
+    try { localStorage.setItem("four-score", JSON.stringify(score)); } catch (e) {}
+    document.getElementById("score").textContent = `You ${score.you} · CPU ${score.cpu}`;
+  }
+  function disc(cx, cy, who, glow) {
+    const r = cell * 0.4, g = x.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    g.addColorStop(0, who === 1 ? "#ff8fa3" : "#fff3a8"); g.addColorStop(1, who === 1 ? "#e03131" : "#f59f00");
+    if (glow) { x.shadowBlur = 24; x.shadowColor = "#fff"; }
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); x.shadowBlur = 0;
+    x.strokeStyle = "#0002"; x.lineWidth = 3; x.beginPath(); x.arc(cx, cy, r * 0.7, 0, 7); x.stroke();
+  }
+  function draw(dt) {
+    t += dt;
+    x.clearRect(0, 0, cell * C, cell * (R + 1));
+    if (!over && turn === 1 && !falling) disc((hover + 0.5) * cell, cell * 0.5 + Math.sin(t * 5) * 3, 1);
+    if (falling) {
+      falling.v += 40 * dt; falling.y += falling.v * dt;
+      if (falling.y >= falling.r) { falling.y = falling.r; if (falling.v > 6) falling.v = -falling.v * 0.3; else { land(); } }
+    }
+    if (falling) disc((falling.col + 0.5) * cell, (falling.y + 1.5) * cell, falling.who);
+    for (let r = 0; r < R; r++) for (let col = 0; col < C; col++) if (b[r][col]) disc((col + 0.5) * cell, (r + 1.5) * cell, b[r][col], winLine && winLine.some(([a, bb]) => a === r && bb === col) && Math.sin(t * 8) > 0);
+    // board with holes
+    x.save(); x.fillStyle = "#3a86ff"; x.beginPath(); x.roundRect(0, cell, cell * C, cell * R, cell * 0.2);
+    for (let r = 0; r < R; r++) for (let col = 0; col < C; col++) { x.moveTo((col + 0.5) * cell + cell * 0.41, (r + 1.5) * cell); x.arc((col + 0.5) * cell, (r + 1.5) * cell, cell * 0.41, 0, 7, true); }
+    x.fill("evenodd"); x.restore();
+    x.strokeStyle = "#ffffff33"; x.lineWidth = 3; x.beginPath(); x.roundRect(1.5, cell + 1.5, cell * C - 3, cell * R - 3, cell * 0.2); x.stroke();
+    if (winLine) { x.strokeStyle = "#fff"; x.lineWidth = 8; x.lineCap = "round"; const s = winLine.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]); x.beginPath(); x.moveTo((s[0][1] + 0.5) * cell, (s[0][0] + 1.5) * cell); x.lineTo((s[s.length - 1][1] + 0.5) * cell, (s[s.length - 1][0] + 1.5) * cell); x.stroke(); }
+  }
+  let last = 0; function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; draw(dt); requestAnimationFrame(loop); }
+  const colAt = (e) => Math.max(0, Math.min(C - 1, Math.floor((e.clientX - c.getBoundingClientRect().left) / cell)));
+  c.addEventListener("pointermove", (e) => (hover = colAt(e)));
+  c.addEventListener("pointerdown", (e) => { if (over) return newGame(); hover = colAt(e); if (turn === 1) drop(hover, 1); });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "arrowleft" || k === "a") { e.preventDefault(); hover = Math.max(0, hover - 1); }
+    if (k === "arrowright" || k === "d") { e.preventDefault(); hover = Math.min(C - 1, hover + 1); }
+    if (/^[1-7]$/.test(k)) { hover = +k - 1; if (turn === 1 && !over) drop(hover, 1); }
+    if (k === " " || k === "enter" || k === "arrowdown" || k === "s") { e.preventDefault(); if (over) newGame(); else if (turn === 1) drop(hover, 1); }
+    if (k === "n") newGame();
+  });
+  document.querySelectorAll("[data-l]").forEach((e) => (e.onclick = () => { level = +e.dataset.l; try { localStorage.setItem("four-level", level); } catch (er) {} newGame(); }));
+  document.getElementById("new").onclick = newGame;
+  newGame(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

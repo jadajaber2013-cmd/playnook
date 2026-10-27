@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Hurdle Dash</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #e8590c; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #pads { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: space-between; gap: 10px; padding: 0 14px; pointer-events: none; }
+  #pads div { display: flex; gap: 10px; }
+  #pads button { pointer-events: auto; width: min(26vw, 110px); height: 84px; border-radius: 22px; border: 4px solid #fff9; background: #0004; color: #fff; font: 900 24px system-ui; touch-action: none; }
+  #pads button.on { background: #fff5; transform: scale(.94); }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="pads"><div><button type="button" data-f="L">L</button><button type="button" data-f="R">R</button></div><button type="button" data-f="J">JUMP</button></div>
+<div id="msg"><div>🏃‍♀️ Hurdle Dash<small>Alternate ← → (or A / D, or L / R) to run.<br>Space / ↑ (or JUMP) to leap over the hurdles.<br>110 metres. Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const DIST = 110, HURDLES = Array.from({ length: 10 }, (_, i) => 13.72 + i * 9.14);
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, me, state = "menu", last = 0, lastFoot = null, raceT = 0, countdown = 0, knocked, best = 0, pops = [], t = 0;
+  try { best = +localStorage.getItem("hurdle-dash-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function start() { me = { pos: 0, v: 0, y: 0, vy: 0, step: 0, done: false }; knocked = new Set(); lastFoot = null; raceT = 0; countdown = 2.2; pops = []; state = "play"; msg.hidden = true; }
+  function tap(f) {
+    if (state !== "play" || countdown > 0 || me.done) return;
+    if (f === "J") { if (me.y === 0) me.vy = 5.2; return; }
+    if (f === lastFoot) { me.v *= 0.93; return; }
+    lastFoot = f; me.v = Math.min(10.5, me.v + 0.95); me.step++;
+  }
+  function update(dt) {
+    t += dt;
+    if (countdown > 0) { countdown -= dt; return; }
+    if (!me.done) raceT += dt;
+    me.v = Math.max(0, me.v - dt * (1.3 + me.v * 0.42));
+    if (me.done) me.v *= Math.pow(0.2, dt);
+    me.vy -= 14 * dt; me.y = Math.max(0, me.y + me.vy * dt); if (me.y === 0) me.vy = 0;
+    const before = me.pos; me.pos += me.v * dt;
+    HURDLES.forEach((h, i) => {
+      if (before < h && me.pos >= h && !knocked.has(i)) {
+        if (me.y < 0.6) { knocked.add(i); me.v *= 0.35; pops.push({ t: "Knocked it! 💥", l: 1 }); }
+        else pops.push({ t: "Clean!", l: 0.6, good: true });
+      }
+    });
+    if (me.pos >= DIST && !me.done) {
+      me.done = true; state = "over";
+      const time = raceT, nb = !best || time < best; if (nb) { best = time; try { localStorage.setItem("hurdle-dash-best", best); } catch (e) {} }
+      setTimeout(() => show(nb ? "🏆 New record!" : "🏁 Finished!", `Time: ${time.toFixed(2)}s · Hurdles hit: ${knocked.size}<br>Best: ${best.toFixed(2)}s<br>Press Space or tap to race again`), 900);
+    }
+  }
+  function draw(dt) {
+    const sky = x.createLinearGradient(0, 0, 0, H * 0.5); sky.addColorStop(0, "#4dabf7"); sky.addColorStop(1, "#d0ebff"); x.fillStyle = sky; x.fillRect(0, 0, W, H);
+    const m = Math.min(W / 12, H / 6), pos = me ? me.pos : 0, cam = pos * m - W * 0.3, gy = H * 0.68;
+    x.fillStyle = "#495057"; x.fillRect(0, H * 0.18, W, H * 0.22);
+    for (let i = 0; i < 120; i++) { const px = ((i * 23 - cam * 0.4) % (W + 40) + W + 40) % (W + 40) - 20; x.fillStyle = `hsl(${(i * 53) % 360},70%,60%)`; x.beginPath(); x.arc(px, H * 0.22 + ((i * 7) % 5) * H * 0.035 - (state === "play" && countdown <= 0 ? Math.abs(Math.sin(t * 7 + i)) * 4 : 0), 6, 0, 7); x.fill(); }
+    x.fillStyle = "#37b24d"; x.fillRect(0, H * 0.4, W, gy - H * 0.4);
+    x.fillStyle = "#d9480f"; x.fillRect(0, gy - 30, W, 60);
+    x.strokeStyle = "#fff"; x.lineWidth = 2; x.beginPath(); x.moveTo(0, gy - 30); x.lineTo(W, gy - 30); x.moveTo(0, gy + 30); x.lineTo(W, gy + 30); x.stroke();
+    x.fillStyle = "#37b24d"; x.fillRect(0, gy + 30, W, H);
+    for (let mm = 0; mm <= DIST; mm += 10) { const px = mm * m - cam; if (px < -40 || px > W + 40) continue; x.fillStyle = "#fff"; x.font = "800 13px system-ui"; x.textAlign = "center"; x.fillText(mm + "m", px, gy + 50); }
+    const fin = DIST * m - cam; for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? "#111" : "#fff"; x.fillRect(fin - 5, gy - 30 + i * 7.5, 10, 7.5); }
+    if (best) { const gx = (best ? (raceT / best) * DIST : 0) * m - cam; if (state === "play" && countdown <= 0 && raceT < best) { x.globalAlpha = 0.35; x.fillStyle = "#fff"; x.beginPath(); x.ellipse(gx, gy - 40, 10, 40, 0, 0, 7); x.fill(); x.globalAlpha = 1; x.font = "700 11px system-ui"; x.fillText("best", gx, gy - 86); } }
+    HURDLES.forEach((h, i) => {
+      const px = h * m - cam; if (px < -60 || px > W + 60) return; const hit = knocked && knocked.has(i);
+      x.save(); x.translate(px, gy + 10); if (hit) x.rotate(1.2);
+      x.fillStyle = "#adb5bd"; x.fillRect(-14, -m * 0.9, 4, m * 0.9); x.fillRect(10, -m * 0.9, 4, m * 0.9);
+      x.fillStyle = "#fff"; x.fillRect(-16, -m * 0.95, 32, m * 0.16); x.fillStyle = "#e03131"; x.fillRect(-6, -m * 0.95, 12, m * 0.16);
+      x.restore();
+    });
+    if (me) {
+      const px = me.pos * m - cam, py = gy + 10 - me.y * m * 0.5, ph = me.step * Math.PI / 1, sw = me.v > 0.3 && me.y === 0 ? Math.sin(ph) : me.y > 0 ? 0.9 : 0, s = m / 50;
+      x.save(); x.translate(px, py); x.scale(s, s);
+      x.fillStyle = "#0003"; x.beginPath(); x.ellipse(0, me.y * 50 * 0.5 / s * s, 16, 4, 0, 0, 7); x.fill();
+      x.strokeStyle = "#5a3b22"; x.lineWidth = 6; x.lineCap = "round";
+      if (me.y > 0) { x.beginPath(); x.moveTo(0, -30); x.lineTo(20, -24); x.lineTo(30, -26); x.moveTo(0, -30); x.lineTo(-12, -16); x.lineTo(-22, -22); x.stroke(); }
+      else { x.beginPath(); x.moveTo(0, -30); x.lineTo(sw * 14, -12); x.lineTo(sw * 18, 0); x.moveTo(0, -30); x.lineTo(-sw * 14, -12); x.lineTo(-sw * 10 - 4, 0); x.stroke(); }
+      x.fillStyle = "#7c5cff"; x.beginPath(); x.roundRect(-8, -56, 16, 28, 6); x.fill();
+      x.strokeStyle = "#5a3b22"; x.beginPath(); x.moveTo(0, -50); x.lineTo(-sw * 14 + (me.y > 0 ? 14 : 0), -38 - (me.y > 0 ? 10 : 0)); x.moveTo(0, -50); x.lineTo(sw * 14, -36); x.stroke();
+      x.fillStyle = "#8a5a36"; x.beginPath(); x.arc(2, -64, 9, 0, 7); x.fill();
+      x.restore();
+    }
+    if (me && state !== "menu") {
+      x.fillStyle = "#0008"; x.beginPath(); x.roundRect(10, 10, 220, 58, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 22px system-ui"; x.textAlign = "left"; x.fillText(`⏱ ${raceT.toFixed(2)}s`, 22, 38);
+      x.font = "700 13px system-ui"; x.fillText(`${Math.max(0, DIST - me.pos).toFixed(0)} m to go${best ? ` · best ${best.toFixed(2)}s` : ""}`, 22, 58);
+      if (countdown > 0) { x.font = `900 ${Math.min(70, W / 8)}px system-ui`; x.textAlign = "center"; x.fillStyle = "#fff"; x.fillText(countdown > 1.1 ? "Ready…" : "Set…", W / 2, H * 0.32); }
+      else if (raceT < 0.7) { x.font = `900 ${Math.min(80, W / 7)}px system-ui`; x.textAlign = "center"; x.fillStyle = "#51cf66"; x.fillText("GO!", W / 2, H * 0.32); }
+      for (const p of pops) { p.l -= dt; x.globalAlpha = Math.max(0, p.l); x.font = "900 28px system-ui"; x.textAlign = "center"; x.fillStyle = p.good ? "#51cf66" : "#ffd23f"; x.fillText(p.t, W / 2, H * 0.32 - (1 - p.l) * 30); }
+      x.globalAlpha = 1; pops = pops.filter((p) => p.l > 0);
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play" || state === "over") update(dt); draw(dt); requestAnimationFrame(loop); }
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowleft", "a"].includes(k)) { e.preventDefault(); if (!e.repeat) tap("L"); }
+    if (["arrowright", "d"].includes(k)) { e.preventDefault(); if (!e.repeat) tap("R"); }
+    if ([" ", "arrowup", "w", "enter"].includes(k)) { e.preventDefault(); if (state === "menu" || (state === "over" && !msg.hidden)) start(); else if (!e.repeat) tap("J"); }
+  });
+  document.querySelectorAll("#pads button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add("on"); if (state === "menu" || (state === "over" && !msg.hidden)) return start(); tap(b.dataset.f); });
+    b.addEventListener("pointerup", () => b.classList.remove("on")); b.addEventListener("pointerleave", () => b.classList.remove("on"));
+  });
+  msg.addEventListener("pointerdown", () => { if (state !== "play") start(); });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

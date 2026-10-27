@@ -1,0 +1,21 @@
+{
+  "title": "Gem Sweeper",
+  "category": "Puzzle",
+  "description": "Dig up the board without hitting a hidden rock! The numbers tell you how many rocks touch each square. Flag the rocks and uncover every gem tile to win.",
+  "instructions": [
+    "Click or tap a square to dig it.",
+    "Right-click, long-press or switch to flag mode to mark a rock.",
+    "Keyboard: arrows move, Space digs, F flags.",
+    "Numbers show how many rocks touch that square."
+  ],
+  "tags": [
+    "logic",
+    "mines",
+    "flags",
+    "classic"
+  ],
+  "added": "2026-09-26",
+  "popularity": 76,
+  "license": "Original",
+  "source": "Original work"
+}

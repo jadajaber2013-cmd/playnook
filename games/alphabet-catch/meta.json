@@ -1,0 +1,21 @@
+{
+  "title": "Alphabet Catch",
+  "category": "Kids",
+  "description": "Letters are falling from the sky! Move the friendly monster to catch them in order from A to Z. Wrong letters make him grumpy.",
+  "instructions": [
+    "Move with the arrow keys or A and D, or drag your finger.",
+    "Catch the next letter of the alphabet shown at the top.",
+    "Catching the wrong letter costs a heart.",
+    "Reach Z to win!"
+  ],
+  "tags": [
+    "alphabet",
+    "letters",
+    "abc",
+    "learning"
+  ],
+  "added": "2026-09-16",
+  "popularity": 60,
+  "license": "Original",
+  "source": "Original work"
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Warp Racer",
+  "category": "Racing",
+  "description": "Blast through a neon space tunnel at warp speed. Steer around the barriers, fly through the boost rings and see how far you can go.",
+  "instructions": [
+    "Steer with the arrow keys or A and D.",
+    "On touch screens, hold the left or right side of the screen.",
+    "Fly through blue rings to boost your speed and score.",
+    "Hitting a barrier ends the run."
+  ],
+  "tags": [
+    "space",
+    "tunnel",
+    "neon",
+    "speed"
+  ],
+  "added": "2026-10-04",
+  "popularity": 75,
+  "license": "Original",
+  "source": "Original work"
+}

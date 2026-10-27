@@ -1,0 +1,21 @@
+{
+  "title": "Mancala",
+  "category": "Strategy",
+  "description": "One of the oldest board games in the world. Sow your stones around the board and capture more than the computer to win.",
+  "instructions": [
+    "Click or tap one of your pits to sow its stones.",
+    "Keyboard: number keys 1–6 or arrows + Space pick a pit.",
+    "Land your last stone in your store to go again.",
+    "Land in an empty pit on your side to capture."
+  ],
+  "tags": [
+    "board game",
+    "stones",
+    "ancient",
+    "vs computer"
+  ],
+  "added": "2026-09-10",
+  "popularity": 59,
+  "license": "Original",
+  "source": "Original work"
+}

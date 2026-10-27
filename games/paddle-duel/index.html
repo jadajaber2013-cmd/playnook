@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Paddle Duel</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0a24; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+  #msg button { margin: 6px; border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-size: 16px; font-weight: 800; background: #fff; color: #3a2a8a; cursor: pointer; }
+  #msg button.on { background: #ffd23f; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"></div>
+<script>
+(() => {
+  const WIN = 7;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, vertical, me, cpu, ball, sMe, sCpu, state = "menu", keys = {}, pointer = null, last = 0, serveT = 0, trail = [], sparks = [], shake = 0, level = 1;
+  try { level = +localStorage.getItem("paddle-duel-level") || 1; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; vertical = H > W * 1.1; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  // Game logic works in a 800x500 field with the player on the left; portrait screens rotate the view.
+  const FW = 800, FH = 500, PH = 90;
+  function menu(title = "🏓 Paddle Duel", sub = "Move with ↑ ↓ / W S, or drag on the screen.<br>First to 7 wins.") {
+    msg.innerHTML = `<div>${title}<small>${sub}</small><div style="margin-top:14px">${["Easy", "Normal", "Hard"].map((n, i) => `<button type="button" data-l="${i + 1}" class="${level === i + 1 ? "on" : ""}">${n}</button>`).join("")}</div><small>Press Space or tap a level to play</small></div>`;
+    msg.hidden = false;
+    msg.querySelectorAll("button").forEach((b) => b.addEventListener("pointerdown", (e) => { e.stopPropagation(); level = +b.dataset.l; try { localStorage.setItem("paddle-duel-level", level); } catch (er) {} start(); }));
+  }
+  function start() { me = { y: FH / 2 }; cpu = { y: FH / 2 }; sMe = 0; sCpu = 0; serve(Math.random() < 0.5 ? 1 : -1); state = "play"; msg.hidden = true; }
+  function serve(dir) { ball = { x: FW / 2, y: FH / 2, vx: 0, vy: 0, dir }; serveT = 0.9; trail = []; }
+  function burst(px, py, col) { for (let i = 0; i < 14; i++) { const a = Math.random() * 7, s = 100 + Math.random() * 250; sparks.push({ x: px, y: py, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5, col }); } }
+
+  function update(dt) {
+    if (keys.up) me.y -= 520 * dt; if (keys.down) me.y += 520 * dt;
+    if (pointer !== null) me.y += (pointer - me.y) * Math.min(1, dt * 18);
+    me.y = Math.max(PH / 2, Math.min(FH - PH / 2, me.y));
+    // computer: follows the ball with limited speed and a little reaction error
+    const cs = [260, 380, 520][level - 1], target = ball.vx > 0 ? ball.y + Math.sin(performance.now() / 400) * [40, 20, 6][level - 1] : FH / 2;
+    cpu.y += Math.max(-cs * dt, Math.min(cs * dt, target - cpu.y));
+    cpu.y = Math.max(PH / 2, Math.min(FH - PH / 2, cpu.y));
+    if (serveT > 0) { serveT -= dt; if (serveT <= 0) { const sp = 360 + level * 30; ball.vx = sp * ball.dir; ball.vy = (Math.random() - 0.5) * 300; } return; }
+    const steps = 4;
+    for (let i = 0; i < steps; i++) {
+      ball.x += ball.vx * dt / steps; ball.y += ball.vy * dt / steps;
+      if (ball.y < 10 || ball.y > FH - 10) { ball.vy *= -1; ball.y = Math.max(10, Math.min(FH - 10, ball.y)); burst(ball.x, ball.y, "#7cf7ff"); }
+      const hitPaddle = (px, p, dir) => {
+        if ((dir < 0 ? ball.x - 10 < px + 8 && ball.x > px - 8 : ball.x + 10 > px - 8 && ball.x < px + 8) && Math.abs(ball.y - p.y) < PH / 2 + 10 && Math.sign(ball.vx) === dir) {
+          const off = (ball.y - p.y) / (PH / 2), sp = Math.min(Math.hypot(ball.vx, ball.vy) * 1.06, 1100);
+          ball.vx = -dir * sp * Math.cos(off * 0.9); ball.vy = sp * Math.sin(off * 0.9); shake = 5;
+          burst(ball.x, ball.y, dir < 0 ? "#ff5d73" : "#ffd23f");
+        }
+      };
+      hitPaddle(30, me, -1); hitPaddle(FW - 30, cpu, 1);
+    }
+    trail.push({ x: ball.x, y: ball.y }); if (trail.length > 14) trail.shift();
+    if (ball.x < -20) { sCpu++; shake = 10; point(-1); } else if (ball.x > FW + 20) { sMe++; shake = 10; point(1); }
+  }
+  function point(winnerSide) {
+    if (sMe >= WIN || sCpu >= WIN) { state = "over"; menu(sMe > sCpu ? "🏆 You win!" : "🤖 Computer wins", `${sMe} – ${sCpu}`); return; }
+    serve(winnerSide > 0 ? 1 : -1);
+  }
+
+  function draw(dt) {
+    x.setTransform(1, 0, 0, 1, 0, 0); const d = Math.min(devicePixelRatio || 1, 2); x.scale(d, d);
+    x.fillStyle = "#0c0a24"; x.fillRect(0, 0, W, H);
+    // map field -> screen
+    let sc, ox, oy;
+    if (vertical) { sc = Math.min(W / FH, H / FW) * 0.96; ox = (W - FH * sc) / 2; oy = (H - FW * sc) / 2; x.transform(0, -sc, sc, 0, ox, oy + FW * sc); } // player at the bottom
+    else { sc = Math.min(W / FW, H / FH) * 0.96; ox = (W - FW * sc) / 2; oy = (H - FH * sc) / 2; x.translate(ox, oy); x.scale(sc, sc); }
+    if (shake > 0) { x.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake = Math.max(0, shake - dt * 30); }
+    const g = x.createLinearGradient(0, 0, FW, 0); g.addColorStop(0, "#2a1450"); g.addColorStop(0.5, "#161040"); g.addColorStop(1, "#14244a");
+    x.fillStyle = g; x.beginPath(); x.roundRect(0, 0, FW, FH, 18); x.fill();
+    x.strokeStyle = "#ffffff22"; x.lineWidth = 4; x.setLineDash([14, 14]); x.beginPath(); x.moveTo(FW / 2, 10); x.lineTo(FW / 2, FH - 10); x.stroke(); x.setLineDash([]);
+    x.beginPath(); x.arc(FW / 2, FH / 2, 60, 0, 7); x.stroke();
+    x.fillStyle = "#ffffff30"; x.font = "900 120px system-ui"; x.textAlign = "center"; x.textBaseline = "middle";
+    x.fillText(sMe ?? 0, FW / 4, FH / 2); x.fillText(sCpu ?? 0, FW * 3 / 4, FH / 2);
+    if (me) {
+      x.shadowBlur = 20;
+      x.shadowColor = "#ff5d73"; x.fillStyle = "#ff7a8c"; x.beginPath(); x.roundRect(22, me.y - PH / 2, 16, PH, 8); x.fill();
+      x.shadowColor = "#ffd23f"; x.fillStyle = "#ffd23f"; x.beginPath(); x.roundRect(FW - 38, cpu.y - PH / 2, 16, PH, 8); x.fill();
+      trail.forEach((p, i) => { x.globalAlpha = i / trail.length * 0.4; x.fillStyle = "#7cf7ff"; x.beginPath(); x.arc(p.x, p.y, 10 * i / trail.length, 0, 7); x.fill(); });
+      x.globalAlpha = 1; x.shadowColor = "#7cf7ff"; x.fillStyle = "#fff"; x.beginPath(); x.arc(ball.x, ball.y, 10, 0, 7); x.fill(); x.shadowBlur = 0;
+      if (serveT > 0 && state === "play") { x.fillStyle = "#fff"; x.font = "900 40px system-ui"; x.fillText(Math.ceil(serveT * 3), FW / 2, FH / 2 - 100); }
+    }
+    for (const s of sparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; x.globalAlpha = Math.max(0, s.life * 2); x.fillStyle = s.col; x.fillRect(s.x - 2, s.y - 2, 4, 4); }
+    x.globalAlpha = 1; sparks = sparks.filter((s) => s.life > 0);
+    field = { vertical, sc, ox, oy };
+  }
+  let field = null;
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const toFieldY = (e) => !field ? FH / 2 : field.vertical ? (e.clientX - field.ox) / field.sc : (e.clientY - field.oy) / field.sc;
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "arrowup" || k === "w" || k === "arrowleft" || k === "a") { keys.up = true; pointer = null; e.preventDefault(); }
+    if (k === "arrowdown" || k === "s" || k === "arrowright" || k === "d") { keys.down = true; pointer = null; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state !== "play") { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); } }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space or tap to continue</small></div>"; msg.hidden = false; }
+  });
+  addEventListener("keyup", (e) => { const k = e.key.toLowerCase(); if (["arrowup", "w", "arrowleft", "a"].includes(k)) keys.up = false; if (["arrowdown", "s", "arrowright", "d"].includes(k)) keys.down = false; });
+  addEventListener("pointerdown", (e) => { if (state === "play") pointer = toFieldY(e); else if (state === "paused") { state = "play"; msg.hidden = true; } else if (e.target === msg || e.target.parentNode === msg) start(); });
+  addEventListener("pointermove", (e) => { if (state === "play" && (e.buttons || e.pointerType === "mouse")) pointer = toFieldY(e); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space or tap to continue</small></div>"; msg.hidden = false; } });
+  menu(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

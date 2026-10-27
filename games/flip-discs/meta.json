@@ -1,0 +1,21 @@
+{
+  "title": "Flip Discs",
+  "category": "Strategy",
+  "description": "Trap your opponent's discs between yours to flip them to your colour. Plan ahead — the board can turn around in a single move!",
+  "instructions": [
+    "Click or tap a highlighted square to place a disc.",
+    "Keyboard: arrows move, Space or Enter places.",
+    "You must flip at least one disc each move.",
+    "Whoever has the most discs at the end wins."
+  ],
+  "tags": [
+    "board game",
+    "discs",
+    "flip",
+    "vs computer"
+  ],
+  "added": "2026-10-03",
+  "popularity": 74,
+  "license": "Original",
+  "source": "Original work"
+}

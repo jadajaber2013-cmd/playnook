@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Brick Bash</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #10162f; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; margin: 0 auto; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0009; font-size: 28px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 500; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🧱 Brick Bash<small>Move the paddle with ← → / A D, the mouse, or by dragging your finger.<br>Space or tap launches the ball. Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const VW = 480, VH = 640; // virtual playfield, scaled to fit
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  const COLORS = ["#ff5d73", "#ff9f1c", "#ffd23f", "#2ec4b6", "#3a86ff", "#7c5cff"];
+  let scale, paddle, ball, bricks, lives, score, level, state = "menu", keys = {}, pointerX = null, last = 0, best = 0;
+  try { best = +localStorage.getItem("brick-bash-best") || 0; } catch (e) {}
+
+  function resize() {
+    scale = Math.min(innerWidth / VW, innerHeight / VH);
+    const d = Math.min(devicePixelRatio || 1, 2);
+    c.style.width = VW * scale + "px"; c.style.height = VH * scale + "px";
+    c.style.marginTop = (innerHeight - VH * scale) / 2 + "px";
+    c.width = VW * scale * d; c.height = VH * scale * d;
+    x.setTransform(scale * d, 0, 0, scale * d, 0, 0);
+  }
+  addEventListener("resize", resize); resize();
+
+  function makeLevel() {
+    bricks = [];
+    const rows = Math.min(4 + level, 8), cols = 8, bw = 52, bh = 20, gap = 4, ox = (VW - cols * (bw + gap) + gap) / 2;
+    for (let r = 0; r < rows; r++) for (let col = 0; col < cols; col++) {
+      if (level > 1 && (r + col + level) % 5 === 0) continue; // patterns on later levels
+      bricks.push({ x: ox + col * (bw + gap), y: 70 + r * (bh + gap), w: bw, h: bh, hp: r < level - 1 ? 2 : 1, color: COLORS[r % COLORS.length] });
+    }
+  }
+  function resetBall() { ball = { x: paddle.x, y: paddle.y - 12, r: 8, vx: 0, vy: 0, stuck: true }; }
+  function newGame() { lives = 3; score = 0; level = 1; paddle = { x: VW / 2, y: VH - 40, w: 90, h: 14 }; makeLevel(); resetBall(); state = "play"; msg.hidden = true; }
+  function launch() { if (ball.stuck) { const speed = 340 + level * 25; ball.stuck = false; ball.vx = speed * 0.5 * (Math.random() < 0.5 ? -1 : 1); ball.vy = -speed * 0.87; } }
+  function show(a, b) { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; }
+  function pause() { if (state === "play") { state = "paused"; show("Paused", "Press P or tap to continue"); } else if (state === "paused") { state = "play"; msg.hidden = true; } }
+
+  function update(dt) {
+    const dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
+    if (dir) paddle.x += dir * 560 * dt;
+    else if (pointerX !== null) paddle.x += (pointerX - paddle.x) * Math.min(1, dt * 20);
+    paddle.x = Math.max(paddle.w / 2, Math.min(VW - paddle.w / 2, paddle.x));
+    if (ball.stuck) { ball.x = paddle.x; ball.y = paddle.y - 12; return; }
+
+    // move in small steps so the ball never tunnels through bricks
+    const steps = Math.ceil(Math.hypot(ball.vx, ball.vy) * dt / 4);
+    for (let i = 0; i < steps; i++) {
+      ball.x += ball.vx * dt / steps; ball.y += ball.vy * dt / steps;
+      if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+      if (ball.x > VW - ball.r) { ball.x = VW - ball.r; ball.vx = -Math.abs(ball.vx); }
+      if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+      if (ball.vy > 0 && ball.y + ball.r > paddle.y - paddle.h / 2 && ball.y < paddle.y + paddle.h / 2 && Math.abs(ball.x - paddle.x) < paddle.w / 2 + ball.r) {
+        const hit = (ball.x - paddle.x) / (paddle.w / 2), speed = Math.hypot(ball.vx, ball.vy) * 1.01;
+        const ang = hit * 1.05;
+        ball.vx = speed * Math.sin(ang); ball.vy = -speed * Math.cos(ang);
+      }
+      for (const b of bricks) {
+        if (b.hp <= 0) continue;
+        const nx = Math.max(b.x, Math.min(ball.x, b.x + b.w)), ny = Math.max(b.y, Math.min(ball.y, b.y + b.h));
+        if ((ball.x - nx) ** 2 + (ball.y - ny) ** 2 < ball.r * ball.r) {
+          const ox = Math.min(ball.x + ball.r - b.x, b.x + b.w - (ball.x - ball.r)), oy = Math.min(ball.y + ball.r - b.y, b.y + b.h - (ball.y - ball.r));
+          if (ox < oy) ball.vx = -ball.vx; else ball.vy = -ball.vy;
+          b.hp--; score += 10;
+          break;
+        }
+      }
+    }
+    if (ball.y > VH + 20) {
+      lives--;
+      if (lives <= 0) {
+        state = "over";
+        if (score > best) { best = score; try { localStorage.setItem("brick-bash-best", best); } catch (e) {} }
+        show("Game over", `Score: ${score} · Best: ${best}<br>Press Space or tap to play again`);
+      } else resetBall();
+    }
+    if (bricks.every((b) => b.hp <= 0)) { level++; score += 100; makeLevel(); resetBall(); }
+  }
+
+  function draw() {
+    const g = x.createLinearGradient(0, 0, 0, VH); g.addColorStop(0, "#1b2350"); g.addColorStop(1, "#10162f");
+    x.fillStyle = g; x.fillRect(0, 0, VW, VH);
+    if (!paddle) return;
+    for (const b of bricks) {
+      if (b.hp <= 0) continue;
+      x.fillStyle = b.color; x.globalAlpha = b.hp === 2 ? 1 : 0.85;
+      x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, 5); x.fill();
+      if (b.hp === 2) { x.strokeStyle = "#fff"; x.lineWidth = 2; x.stroke(); }
+      x.globalAlpha = 1; x.fillStyle = "#ffffff44"; x.fillRect(b.x + 4, b.y + 3, b.w - 8, 4);
+    }
+    x.fillStyle = "#e8ecff"; x.beginPath(); x.roundRect(paddle.x - paddle.w / 2, paddle.y - paddle.h / 2, paddle.w, paddle.h, 7); x.fill();
+    x.fillStyle = "#ffd23f"; x.beginPath(); x.arc(ball.x, ball.y, ball.r, 0, 7); x.fill();
+    x.fillStyle = "#fff"; x.font = "bold 18px system-ui"; x.textAlign = "left";
+    x.fillText(`Score ${score}`, 12, 30); x.textAlign = "center"; x.fillText(`Level ${level}`, VW / 2, 30);
+    x.textAlign = "right"; x.fillText("❤️".repeat(Math.max(lives, 0)), VW - 12, 30);
+    if (ball.stuck && state === "play") { x.textAlign = "center"; x.font = "16px system-ui"; x.fillText("Press Space or tap to launch", VW / 2, VH - 90); }
+  }
+
+  function loop(now) { const dt = Math.min(0.03, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(); requestAnimationFrame(loop); }
+
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; pointerX = null; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || state === "over") newGame(); else if (state === "paused") pause(); else launch(); }
+    if (k === "p" || k === "escape") pause();
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  const toWorld = (e) => (e.clientX - c.getBoundingClientRect().left) / scale;
+  addEventListener("pointerdown", (e) => {
+    if (state === "menu" || state === "over") return newGame();
+    if (state === "paused") return pause();
+    pointerX = toWorld(e); launch();
+  });
+  addEventListener("pointermove", (e) => { if (state === "play") pointerX = toWorld(e); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") pause(); });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

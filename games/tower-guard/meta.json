@@ -1,0 +1,21 @@
+{
+  "title": "Tower Guard",
+  "category": "Strategy",
+  "description": "Build towers along the winding path to stop the waves of slimes from reaching your castle. Upgrade your towers and survive all 20 waves!",
+  "instructions": [
+    "Click or tap an empty grass tile to build the selected tower.",
+    "Click a tower to upgrade or sell it.",
+    "Keyboard: 1–3 pick a tower, arrow keys move the cursor, B builds, S sells, Space sends the next wave.",
+    "Don't let 20 slimes reach the castle."
+  ],
+  "tags": [
+    "tower defense",
+    "towers",
+    "waves",
+    "upgrade"
+  ],
+  "added": "2026-09-30",
+  "popularity": 90,
+  "license": "Original",
+  "source": "Original work"
+}

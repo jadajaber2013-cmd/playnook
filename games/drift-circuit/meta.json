@@ -1,0 +1,21 @@
+{
+  "title": "Drift Circuit",
+  "category": "Racing",
+  "description": "Slide a little sports car around twisty top-down tracks. Beat the clock over three laps and try to set the fastest lap time on every circuit.",
+  "instructions": [
+    "Up / W accelerates, Down / S brakes, Left and Right steer.",
+    "On touch screens, use the on-screen pedals and steering buttons.",
+    "Stay on the track — the grass slows you down.",
+    "Finish three laps as fast as you can."
+  ],
+  "tags": [
+    "drift",
+    "laps",
+    "time trial",
+    "cars"
+  ],
+  "added": "2026-10-07",
+  "popularity": 79,
+  "license": "Original",
+  "source": "Original work"
+}

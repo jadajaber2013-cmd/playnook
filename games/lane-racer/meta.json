@@ -1,0 +1,21 @@
+{
+  "title": "Lane Racer",
+  "category": "Racing",
+  "description": "Weave through rush-hour traffic on a busy highway. The faster you go the more points you score — grab fuel cans and don't crash!",
+  "instructions": [
+    "Steer with the arrow keys or A and D. Up speeds up, Down slows down.",
+    "On touch screens, tap the left or right side to change lanes.",
+    "Collect fuel cans before your tank runs out.",
+    "Avoid the other cars."
+  ],
+  "tags": [
+    "cars",
+    "traffic",
+    "highway",
+    "speed"
+  ],
+  "added": "2026-10-27",
+  "popularity": 86,
+  "license": "Original",
+  "source": "Original work"
+}

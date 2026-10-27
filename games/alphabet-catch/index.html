@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Alphabet Catch</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #c5f6fa; color: #1c1638; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #ffffffbb; font-size: 36px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 18px; font-weight: 700; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🔤 Alphabet Catch<small>Help Munchy catch the letters in order, A to Z!<br>Move with ← → / A D, or drag your finger.<br>Tap or press Space to start</small></div></div>
+<script>
+(() => {
+  const ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ", COLS = ["#ff4f6d", "#ff9f1c", "#ffd23f", "#51cf66", "#4dabf7", "#7c5cff", "#ff8fc7"];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, U, mon, letters, fx, nextI, hearts, state = "menu", last = 0, keys = {}, touchX = null, spawnT = 0, t = 0, mood = 0, chew = 0, best = 0;
+  try { best = +localStorage.getItem("alphabet-catch-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; U = Math.min(W, H) / 500; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function say(tx) { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(tx); u.pitch = 1.3; speechSynthesis.speak(u); } catch (e) {} }
+  let audio; function tone(f, d = 0.12) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.type = "triangle"; o.frequency.value = f; g.gain.setValueAtTime(0.15, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + d); } catch (e) {} }
+  function start() { mon = { x: W / 2 }; letters = []; fx = []; nextI = 0; hearts = 5; state = "play"; msg.hidden = true; say("Catch the letter A!"); }
+  function spawn() {
+    const want = ABC[nextI], hasWant = letters.some((l) => l.ch === want);
+    const ch = !hasWant && Math.random() < 0.6 ? want : ABC[Math.floor(Math.random() * 26)];
+    letters.push({ ch, x: 30 * U + Math.random() * (W - 60 * U), y: -30 * U, v: (70 + Math.random() * 40 + nextI * 3) * U, rot: (Math.random() - 0.5) * 0.6, col: COLS[Math.floor(Math.random() * COLS.length)] });
+  }
+  function update(dt) {
+    t += dt; mood = Math.max(0, mood - dt); chew = Math.max(0, chew - dt);
+    if (keys.left) mon.x -= 520 * U * dt; if (keys.right) mon.x += 520 * U * dt;
+    if (touchX !== null) mon.x += (touchX - mon.x) * Math.min(1, dt * 12);
+    mon.x = Math.max(50 * U, Math.min(W - 50 * U, mon.x));
+    spawnT -= dt; if (spawnT <= 0) { spawn(); spawnT = Math.max(0.6, 1.3 - nextI * 0.02); }
+    const my = H - 70 * U;
+    for (const l of letters) {
+      l.y += l.v * dt;
+      if (!l.done && l.y > my - 40 * U && l.y < my + 10 * U && Math.abs(l.x - mon.x) < 50 * U) {
+        l.done = true;
+        if (l.ch === ABC[nextI]) {
+          nextI++; chew = 0.4; tone(500 + nextI * 20); say(l.ch);
+          for (let k = 0; k < 12; k++) { const a = Math.random() * 7; fx.push({ x: l.x, y: l.y, vx: Math.cos(a) * 200, vy: Math.sin(a) * 200, l: 0.6, col: l.col }); }
+          if (nextI >= 26) return win();
+        } else { hearts--; mood = 1; tone(140, 0.3); fx.push({ text: "Yuck!", x: mon.x, y: my - 80 * U, l: 1 }); if (hearts <= 0) return lose(); }
+      }
+    }
+    letters = letters.filter((l) => !l.done && l.y < H + 40);
+  }
+  function win() { state = "over"; best = 26; try { localStorage.setItem("alphabet-catch-best", 26); } catch (e) {} say("You did it! A to Z!"); show("🎉 A to Z!", "Munchy ate the whole alphabet!<br>Tap or press Space to play again"); }
+  function lose() { state = "over"; if (nextI > best) { best = nextI; try { localStorage.setItem("alphabet-catch-best", best); } catch (e) {} } show("😋 Munchy is full!", `You got to ${ABC[Math.max(0, nextI - 1)] || "A"} (${nextI} letters). Best: ${best}<br>Tap or press Space to try again`); }
+  function draw(dt) {
+    const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#99e9f2"); g.addColorStop(1, "#e3fafc"); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#8ce99a"; x.fillRect(0, H - 40 * U, W, 40 * U);
+    for (let i = 0; i < W; i += 50 * U) { x.fillStyle = "#69db7c"; x.beginPath(); x.arc(i, H - 40 * U, 22 * U, Math.PI, 0); x.fill(); }
+    if (letters) for (const l of letters) {
+      x.save(); x.translate(l.x, l.y); x.rotate(l.rot + Math.sin(t * 2 + l.x) * 0.15);
+      x.fillStyle = "#fff"; x.beginPath(); x.roundRect(-24 * U, -24 * U, 48 * U, 48 * U, 12 * U); x.fill();
+      x.fillStyle = l.col; x.font = `900 ${36 * U}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(l.ch, 0, 2 * U);
+      if (state === "play" && l.ch === ABC[nextI]) { x.strokeStyle = "#ffd23f"; x.lineWidth = 4; x.beginPath(); x.roundRect(-27 * U, -27 * U, 54 * U, 54 * U, 14 * U); x.stroke(); }
+      x.restore();
+    }
+    if (mon) {
+      const my = H - 70 * U, squash = 1 + Math.sin(t * 6) * 0.03 + chew * 0.2;
+      x.save(); x.translate(mon.x, my); x.scale(1 + chew * 0.1, 1 / squash);
+      x.fillStyle = mood > 0 ? "#94d82d" : "#7c5cff"; x.beginPath(); x.ellipse(0, 0, 48 * U, 42 * U, 0, 0, 7); x.fill();
+      x.fillStyle = "#fff"; x.beginPath(); x.arc(-16 * U, -16 * U, 11 * U, 0, 7); x.arc(16 * U, -16 * U, 11 * U, 0, 7); x.fill();
+      x.fillStyle = "#1c1638"; const look = letters && letters.length ? Math.max(-3, Math.min(3, (letters[0].x - mon.x) / 40)) : 0; x.beginPath(); x.arc(-16 * U + look * U, -15 * U, 5 * U, 0, 7); x.arc(16 * U + look * U, -15 * U, 5 * U, 0, 7); x.fill();
+      x.fillStyle = "#1c1638"; x.beginPath(); if (mood > 0) { x.arc(0, 18 * U, 12 * U, Math.PI, 0); } else { x.ellipse(0, 10 * U, 20 * U, (chew > 0 ? 6 : 14) * U, 0, 0, Math.PI); } x.fill();
+      x.fillStyle = "#fff"; x.fillRect(-10 * U, 9 * U, 7 * U, 6 * U); x.fillRect(3 * U, 9 * U, 7 * U, 6 * U);
+      x.fillStyle = mood > 0 ? "#94d82d" : "#7c5cff"; x.beginPath(); x.moveTo(-30 * U, -32 * U); x.lineTo(-38 * U, -54 * U); x.lineTo(-18 * U, -38 * U); x.moveTo(30 * U, -32 * U); x.lineTo(38 * U, -54 * U); x.lineTo(18 * U, -38 * U); x.fill();
+      x.restore();
+    }
+    if (fx) { for (const f of fx) { f.l -= dt; x.globalAlpha = Math.max(0, f.l * 1.5); if (f.text) { f.y -= 40 * dt; x.font = `900 ${24 * U}px system-ui`; x.textAlign = "center"; x.fillStyle = "#e03131"; x.fillText(f.text, f.x, f.y); } else { f.x += f.vx * dt; f.y += f.vy * dt; x.fillStyle = f.col; x.beginPath(); x.arc(f.x, f.y, 5 * U, 0, 7); x.fill(); } } x.globalAlpha = 1; fx = fx.filter((f) => f.l > 0); }
+    if (state !== "menu" && mon) {
+      x.fillStyle = "#fff"; x.beginPath(); x.roundRect(10, 10, W - 20, 52 * U, 16); x.fill();
+      x.font = `900 ${Math.min(22 * U, (W - 40) / 30)}px system-ui`; x.textBaseline = "middle"; x.textAlign = "center";
+      const step = (W - 40) / 26; for (let i = 0; i < 26; i++) { x.fillStyle = i < nextI ? "#51cf66" : i === nextI ? "#ff4f6d" : "#adb5bd"; x.fillText(ABC[i], 20 + step * (i + 0.5), 10 + 26 * U); }
+      x.textBaseline = "alphabetic"; x.textAlign = "left"; x.fillStyle = "#1c1638"; x.font = `800 ${18 * U}px system-ui`; x.fillText("❤️".repeat(Math.max(0, hearts)), 14, 90 * U);
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); else t += dt; draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; touchX = null; e.preventDefault(); }
+    if ((k === " " || k === "enter") && state !== "play") { e.preventDefault(); start(); }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  addEventListener("pointerdown", (e) => { if (state !== "play") return start(); touchX = e.clientX; });
+  addEventListener("pointermove", (e) => { if (state === "play" && (e.buttons || e.pointerType === "mouse")) touchX = e.clientX; });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

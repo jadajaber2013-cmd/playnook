@@ -1,0 +1,21 @@
+{
+  "title": "Bubble Shooter",
+  "category": "Arcade",
+  "description": "Aim and fire colourful bubbles. Match three or more of the same colour to pop them, and drop whole clusters for huge combos before the bubbles reach the bottom.",
+  "instructions": [
+    "Aim with the mouse or your finger, then click or release to shoot.",
+    "Keyboard: Left and Right arrows aim, Space shoots.",
+    "Bounce shots off the side walls.",
+    "Match 3+ bubbles of the same colour to pop them."
+  ],
+  "tags": [
+    "bubbles",
+    "match",
+    "aim",
+    "colors"
+  ],
+  "added": "2026-09-12",
+  "popularity": 89,
+  "license": "Original",
+  "source": "Original work"
+}

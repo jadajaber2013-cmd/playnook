@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mancala</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #3d2a1a, #1e140b); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud button { background: #ffffff18; border: 0; color: #fff; font: inherit; font-weight: 800; padding: 7px 13px; border-radius: 999px; cursor: pointer; }
+  #hud button.on { background: #ffd23f; color: #3a2400; }
+  #status { font-weight: 900; font-size: 19px; min-height: 1.3em; text-align: center; }
+  #board { position: relative; display: grid; grid-template-columns: var(--s) repeat(6, var(--p)) var(--s); grid-template-rows: var(--p) var(--p); gap: 10px; padding: 16px; background: linear-gradient(160deg, #c08a50, #8b5a2b); border-radius: 60px; box-shadow: 0 24px 50px #000a, inset 0 4px 0 #ffffff33, inset 0 -6px 0 #0003; }
+  .pit { position: relative; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #5c3d1e, #7a5230); box-shadow: inset 0 6px 12px #0008; border: 0; padding: 0; cursor: default; }
+  .pit.mine.ok { cursor: pointer; box-shadow: inset 0 6px 12px #0008, 0 0 0 3px #ffd23f88; }
+  .pit.mine.ok:hover, .pit.cur { box-shadow: inset 0 6px 12px #0008, 0 0 0 4px #ffd23f; }
+  .pit.flash { animation: flash .35s; }
+  @keyframes flash { 50% { box-shadow: inset 0 6px 12px #0008, 0 0 0 8px #fff; } }
+  .store { grid-row: 1 / 3; border-radius: 999px; }
+  .n { position: absolute; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 15px; text-shadow: 0 1px 3px #000; }
+  .top .n { top: -22px; } .bot .n { bottom: -22px; } .store .n { top: 50%; transform: translate(-50%, -50%); font-size: 26px; opacity: .9; }
+  .st { position: absolute; width: var(--g); height: var(--g); border-radius: 50%; box-shadow: inset -2px -3px 0 #0003, inset 2px 2px 0 #fff6; transition: left .25s, top .25s; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" data-l="1">Easy</button><button type="button" data-l="2">Medium</button><button type="button" data-l="3">Hard</button><button type="button" id="new">↻ New</button></div>
+  <div id="status">Your turn — pick a pit on the bottom row</div>
+  <div id="board"></div>
+  <div style="font-size:12px;opacity:.7;text-align:center">Keys 1–6 (or ← → and Space) pick a pit · Your store is on the right</div>
+</div>
+<script>
+(() => {
+  const COLORS = ["#ff6b6b", "#ffd43b", "#69db7c", "#4dabf7", "#da77f2", "#ffa94d", "#e9ecef"];
+  const boardEl = document.getElementById("board"), statusEl = document.getElementById("status");
+  let p, level = 2, turn, busy, els = [], stones = [], cur = 0, kbd = false;
+  try { level = +localStorage.getItem("mancala-level") || 2; } catch (e) {}
+  // index 0-5 your pits (left→right), 6 your store, 7-12 CPU pits (right→left), 13 CPU store
+  function build() {
+    const ps = Math.floor(Math.min((innerWidth - 60) / 8.6, (innerHeight - 170) / 2.4, 90));
+    boardEl.style.setProperty("--p", ps + "px"); boardEl.style.setProperty("--s", Math.round(ps * 1.1) + "px"); boardEl.style.setProperty("--g", Math.max(9, Math.round(ps * 0.17)) + "px");
+    boardEl.innerHTML = ""; els = [];
+    const mk = (i, cls, col, row) => { const e = document.createElement("button"); e.type = "button"; e.className = "pit " + cls; e.style.gridColumn = col; e.style.gridRow = row; e.innerHTML = '<span class="n"></span>'; boardEl.appendChild(e); els[i] = e; e.onclick = () => { kbd = false; if (i < 6) play(i); }; };
+    mk(13, "store", "1", "1 / 3"); mk(6, "store", "8", "1 / 3");
+    for (let i = 0; i < 6; i++) mk(i, "bot mine", String(i + 2), "2");
+    for (let i = 7; i < 13; i++) mk(i, "top", String(13 - i + 1), "1");
+    stones.forEach((s) => s.el && boardEl.appendChild(s.el));
+    place(true);
+  }
+  function newGame() {
+    p = [4, 4, 4, 4, 4, 4, 0, 4, 4, 4, 4, 4, 4, 0]; turn = 1; busy = false;
+    stones.forEach((s) => s.el.remove()); stones = [];
+    p.forEach((n, i) => { for (let k = 0; k < n; k++) addStone(i); });
+    document.querySelectorAll("[data-l]").forEach((e) => e.classList.toggle("on", +e.dataset.l === level));
+    place(true); render(); statusEl.textContent = "Your turn — pick a pit on the bottom row";
+  }
+  function addStone(pit) { const el = document.createElement("div"); el.className = "st"; el.style.background = COLORS[Math.floor(Math.random() * COLORS.length)]; boardEl.appendChild(el); stones.push({ el, pit, ox: Math.random(), oy: Math.random() }); }
+  function place(instant) {
+    const br = boardEl.getBoundingClientRect(), g = parseFloat(getComputedStyle(boardEl).getPropertyValue("--g")) || 12;
+    const counts = {};
+    for (const s of stones) {
+      const e = els[s.pit]; if (!e) continue; const r = e.getBoundingClientRect(), k = (counts[s.pit] = (counts[s.pit] || 0) + 1) - 1;
+      const ang = k * 2.4, rad = Math.min(r.width, r.height) * 0.08 * Math.sqrt(k + 0.5);
+      const cx = r.left - br.left + r.width / 2 + Math.cos(ang) * Math.min(rad * 1.6, r.width * 0.3) - g / 2, cy = r.top - br.top + r.height / 2 + Math.sin(ang) * Math.min(rad * 1.6, r.height * 0.3) - g / 2;
+      if (instant) s.el.style.transition = "none"; s.el.style.left = cx + "px"; s.el.style.top = cy + "px"; if (instant) { void s.el.offsetWidth; s.el.style.transition = ""; }
+    }
+  }
+  function render() {
+    els.forEach((e, i) => { e.querySelector(".n").textContent = p[i]; e.classList.toggle("ok", turn === 1 && !busy && i < 6 && p[i] > 0); e.classList.toggle("cur", kbd && i === cur); });
+  }
+  function sowOnce(g, i, who) {
+    let n = g[i]; g[i] = 0; let j = i; const path = [];
+    while (n > 0) { j = (j + 1) % 14; if ((who === 1 && j === 13) || (who === 2 && j === 6)) continue; g[j]++; n--; path.push(j); }
+    let extra = (who === 1 && j === 6) || (who === 2 && j === 13), cap = null;
+    const mineSide = who === 1 ? j >= 0 && j <= 5 : j >= 7 && j <= 12;
+    if (!extra && mineSide && g[j] === 1 && g[12 - j] > 0) { cap = { at: j, opp: 12 - j, n: g[12 - j] + 1 }; g[who === 1 ? 6 : 13] += g[12 - j] + 1; g[12 - j] = 0; g[j] = 0; }
+    return { path, extra, cap };
+  }
+  const sideEmpty = (g) => g.slice(0, 6).every((v) => !v) || g.slice(7, 13).every((v) => !v);
+  function finishBoard(g) { for (let i = 0; i < 6; i++) { g[6] += g[i]; g[i] = 0; } for (let i = 7; i < 13; i++) { g[13] += g[i]; g[i] = 0; } }
+  function evalG(g) { return g[13] - g[6]; }
+  function search(g, depth, who, a, b) {
+    if (sideEmpty(g)) { const h = g.slice(); finishBoard(h); return (h[13] - h[6]) * 100; }
+    if (!depth) return evalG(g);
+    const opts = who === 2 ? [7, 8, 9, 10, 11, 12] : [0, 1, 2, 3, 4, 5];
+    let best = who === 2 ? -Infinity : Infinity;
+    for (const i of opts) { if (!g[i]) continue; const h = g.slice(), r = sowOnce(h, i, who), v = search(h, r.extra ? depth : depth - 1, r.extra ? who : 3 - who, a, b); if (who === 2) { best = Math.max(best, v); a = Math.max(a, v); } else { best = Math.min(best, v); b = Math.min(b, v); } if (b <= a) break; }
+    return best;
+  }
+  async function animate(i, who) {
+    busy = true; render();
+    const g = p.slice(), res = sowOnce(g, i, who);
+    const moving = stones.filter((s) => s.pit === i);
+    for (let k = 0; k < res.path.length; k++) { moving[k].pit = res.path[k]; p[i]--; p[res.path[k]]++; place(); render(); els[res.path[k]].classList.remove("flash"); void els[res.path[k]].offsetWidth; els[res.path[k]].classList.add("flash"); tone(380 + k * 30); await wait(230); }
+    if (res.cap) { await wait(250); const store = who === 1 ? 6 : 13; stones.filter((s) => s.pit === res.cap.at || s.pit === res.cap.opp).forEach((s) => (s.pit = store)); p[store] += res.cap.n; p[res.cap.at] = 0; p[res.cap.opp] = 0; place(); tone(700); statusEl.textContent = who === 1 ? `Capture! +${res.cap.n} 💎` : `Computer captured ${res.cap.n}`; await wait(500); }
+    if (sideEmpty(p)) { await wait(300); stones.forEach((s) => { if (s.pit < 6) s.pit = 6; else if (s.pit > 6 && s.pit < 13) s.pit = 13; }); finishBoard(p); place(); render(); return end(); }
+    turn = res.extra ? who : 3 - who; busy = false; render();
+    if (turn === 2) { statusEl.textContent = res.extra && who === 2 ? "Computer goes again…" : "Computer is thinking…"; setTimeout(cpu, 600); }
+    else statusEl.textContent = res.extra ? "Landed in your store — go again! ✨" : "Your turn";
+  }
+  function play(i) { if (turn !== 1 || busy || !p[i]) return; animate(i, 1); }
+  function cpu() {
+    const opts = [7, 8, 9, 10, 11, 12].filter((i) => p[i]); let pick = opts[0];
+    if (level === 1 && Math.random() < 0.6) pick = opts[Math.floor(Math.random() * opts.length)];
+    else { const depth = level === 2 ? 2 : 5; let best = -Infinity; for (const i of opts) { const h = p.slice(), r = sowOnce(h, i, 2), v = search(h, r.extra ? depth : depth - 1, r.extra ? 2 : 1, -Infinity, Infinity) + Math.random() * 0.1; if (v > best) { best = v; pick = i; } } }
+    animate(pick, 2);
+  }
+  function end() { busy = true; render(); statusEl.textContent = p[6] > p[13] ? `🏆 You win ${p[6]}–${p[13]}!` : p[6] < p[13] ? `🤖 Computer wins ${p[13]}–${p[6]}` : `🤝 Draw ${p[6]}–${p[13]}`; }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let audio; function tone(f) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.type = "sine"; o.frequency.value = f; g.gain.setValueAtTime(0.08, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.08); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.08); } catch (e) {} }
+  addEventListener("keydown", (e) => {
+    if (/^[1-6]$/.test(e.key)) { kbd = true; cur = +e.key - 1; play(cur); }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); kbd = true; cur = Math.max(0, Math.min(5, cur + (e.key === "ArrowRight" ? 1 : -1))); render(); }
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); kbd = true; play(cur); }
+  });
+  document.querySelectorAll("[data-l]").forEach((e) => (e.onclick = () => { level = +e.dataset.l; try { localStorage.setItem("mancala-level", level); } catch (er) {} newGame(); }));
+  document.getElementById("new").onclick = newGame;
+  addEventListener("resize", () => build());
+  build(); newGame();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Memory Match</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(135deg, #ffcf5c, #ff7eb3); color: #3b1d4a; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 10px; box-sizing: border-box; }
+  #hud { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; align-items: center; font-weight: 800; }
+  #hud span { background: #ffffffaa; padding: 6px 12px; border-radius: 999px; }
+  #hud button, #win button { border: 0; border-radius: 999px; padding: 8px 14px; background: #7c5cff; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+  #board { display: grid; gap: var(--gap); grid-template-columns: repeat(var(--cols), var(--size)); }
+  .card { width: var(--size); height: var(--size); perspective: 600px; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 14px; }
+  .card:focus-visible { outline: 4px solid #3a86ff; outline-offset: 2px; }
+  .inner { position: relative; width: 100%; height: 100%; transition: transform .35s; transform-style: preserve-3d; }
+  .card.up .inner, .card.done .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; border-radius: 14px; display: grid; place-items: center; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 4px 0 #0002; }
+  .back { background: #7c5cff radial-gradient(circle at 50% 50%, #9d85ff 0 22%, transparent 23%); }
+  .front { background: #fff; transform: rotateY(180deg); font-size: calc(var(--size) * .55); }
+  .card.done .front { background: #d6ffe1; }
+  #win { position: fixed; inset: 0; background: #0007; display: grid; place-items: center; }
+  #win[hidden] { display: none; }
+  #win div { background: #fff; padding: 24px 28px; border-radius: 20px; text-align: center; font-size: 18px; max-width: 320px; }
+  #win h2 { margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span id="moves">Moves: 0</span><span id="time">⏱ 0s</span><span id="best">Best: –</span>
+    <button id="size" type="button">4×4</button>
+    <button id="restart" type="button">↻ New game</button>
+  </div>
+  <div id="board" role="grid" aria-label="Memory cards"></div>
+</div>
+<div id="win" hidden><div><h2>🎉 You did it!</h2><p id="winText"></p><button type="button" id="again">Play again</button></div></div>
+<script>
+(() => {
+  const EMOJI = ["🐶", "🐱", "🦊", "🐼", "🐸", "🐵", "🦁", "🐷", "🐙", "🦄", "🐝", "🐢", "🐳", "🦋", "🍉", "🍓", "⭐", "🌈"];
+  const SIZES = [[4, 4], [4, 5], [6, 6]];
+  const board = document.getElementById("board"), movesEl = document.getElementById("moves"), timeEl = document.getElementById("time"), bestEl = document.getElementById("best");
+  const win = document.getElementById("win"), winText = document.getElementById("winText"), sizeBtn = document.getElementById("size");
+  let sizeIdx = 0, cols, rows, cards, open, moves, matched, startTime, timer, lock;
+
+  function layout() {
+    const gap = 8;
+    const s = Math.floor(Math.min((innerWidth - 20 - gap * (cols - 1)) / cols, (innerHeight - 90 - gap * (rows - 1)) / rows, 120));
+    board.style.setProperty("--size", Math.max(40, s) + "px");
+    board.style.setProperty("--gap", gap + "px");
+    board.style.setProperty("--cols", cols);
+  }
+
+  function bestKey() { return "memory-best-" + cols + "x" + rows; }
+
+  function newGame() {
+    [cols, rows] = SIZES[sizeIdx];
+    sizeBtn.textContent = cols + "×" + rows;
+    const pairs = (cols * rows) / 2;
+    const pick = EMOJI.slice().sort(() => Math.random() - 0.5).slice(0, pairs);
+    const deck = pick.concat(pick);
+    for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+    board.innerHTML = "";
+    cards = deck.map((e, i) => {
+      const b = document.createElement("button");
+      b.className = "card"; b.type = "button"; b.dataset.i = i; b.dataset.e = e;
+      b.setAttribute("aria-label", "Hidden card");
+      b.innerHTML = `<div class="inner"><div class="face back"></div><div class="face front">${e}</div></div>`;
+      b.addEventListener("click", () => flip(b));
+      board.appendChild(b);
+      return b;
+    });
+    open = []; moves = 0; matched = 0; lock = false; startTime = 0;
+    clearInterval(timer); timeEl.textContent = "⏱ 0s"; movesEl.textContent = "Moves: 0";
+    const best = localStorage.getItem(bestKey());
+    bestEl.textContent = "Best: " + (best ? best + " moves" : "–");
+    win.hidden = true;
+    layout();
+  }
+
+  function flip(b) {
+    if (lock || b.classList.contains("up") || b.classList.contains("done")) return;
+    if (!startTime) { startTime = Date.now(); timer = setInterval(() => (timeEl.textContent = "⏱ " + Math.floor((Date.now() - startTime) / 1000) + "s"), 500); }
+    b.classList.add("up"); b.setAttribute("aria-label", b.dataset.e);
+    open.push(b);
+    if (open.length < 2) return;
+    moves++; movesEl.textContent = "Moves: " + moves;
+    const [a, c] = open;
+    if (a.dataset.e === c.dataset.e) {
+      a.classList.add("done"); c.classList.add("done"); open = []; matched += 2;
+      if (matched === cards.length) finish();
+    } else {
+      lock = true;
+      setTimeout(() => { a.classList.remove("up"); c.classList.remove("up"); a.setAttribute("aria-label", "Hidden card"); c.setAttribute("aria-label", "Hidden card"); open = []; lock = false; }, 800);
+    }
+  }
+
+  function finish() {
+    clearInterval(timer);
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    const best = +localStorage.getItem(bestKey()) || Infinity;
+    const isBest = moves < best;
+    if (isBest) localStorage.setItem(bestKey(), moves);
+    winText.textContent = `${moves} moves in ${secs} seconds.${isBest ? " New best!" : ""}`;
+    setTimeout(() => { win.hidden = false; document.getElementById("again").focus(); }, 500);
+  }
+
+  // Arrow keys move between cards; Enter/Space flips (native button behaviour).
+  board.addEventListener("keydown", (e) => {
+    const i = cards.indexOf(document.activeElement);
+    if (i < 0) return;
+    const move = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols }[e.key];
+    if (move !== undefined) { e.preventDefault(); const n = i + move; if (n >= 0 && n < cards.length) cards[n].focus(); }
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "r") newGame();
+    if (!board.contains(document.activeElement) && e.key.startsWith("Arrow")) { e.preventDefault(); cards[0].focus(); }
+  });
+
+  document.getElementById("restart").addEventListener("click", newGame);
+  document.getElementById("again").addEventListener("click", newGame);
+  sizeBtn.addEventListener("click", () => { sizeIdx = (sizeIdx + 1) % SIZES.length; newGame(); });
+  addEventListener("resize", layout);
+  newGame();
+})();
+</script>
+</body>
+</html>

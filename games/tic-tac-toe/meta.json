@@ -1,0 +1,22 @@
+{
+  "title": "Tic-Tac-Toe",
+  "category": "Strategy",
+  "description": "Play noughts and crosses against the computer. Choose Easy, Medium or Hard — on Hard the computer never makes a mistake, so the best you can do is a draw!",
+  "instructions": [
+    "You are X and the computer is O. Take turns placing your mark.",
+    "Get three in a row — across, down or diagonally — to win.",
+    "Click or tap a square, or press keys 1–9 (top-left is 1). Arrow keys move between squares.",
+    "Pick a difficulty at the bottom. Press N for a new round."
+  ],
+  "tags": [
+    "tic-tac-toe",
+    "noughts and crosses",
+    "board game",
+    "strategy",
+    "vs computer"
+  ],
+  "added": "2026-10-18",
+  "popularity": 70,
+  "license": "Original",
+  "source": "Original work"
+}

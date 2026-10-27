@@ -1,0 +1,21 @@
+{
+  "title": "Hurdle Dash",
+  "category": "Sports",
+  "description": "Sprint down the track and leap the hurdles at full speed. Time your jumps perfectly to beat the clock and set a new record.",
+  "instructions": [
+    "Alternate Left and Right (or tap the two buttons) to run.",
+    "Press Space or Up (or tap the jump button) to jump.",
+    "Knocking a hurdle slows you down.",
+    "Finish the 110 m as fast as you can."
+  ],
+  "tags": [
+    "athletics",
+    "hurdles",
+    "running",
+    "timing"
+  ],
+  "added": "2026-09-05",
+  "popularity": 61,
+  "license": "Original",
+  "source": "Original work"
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Doodle Pad",
+  "category": "Kids",
+  "description": "A colourful drawing pad for little artists. Pick a brush, choose a colour, stamp stickers and save your masterpiece as a picture.",
+  "instructions": [
+    "Draw with your finger or the mouse.",
+    "Pick colours, brush sizes and stamps from the toolbar.",
+    "Keyboard: C clears, Z undoes, S saves.",
+    "Press Save to download your picture."
+  ],
+  "tags": [
+    "drawing",
+    "art",
+    "creative",
+    "colors"
+  ],
+  "added": "2026-09-02",
+  "popularity": 69,
+  "license": "Original",
+  "source": "Original work"
+}

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pixel Logic</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #fff4e6, #e7f5ff); color: #1c1638; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  #hud button { border: 0; border-radius: 999px; padding: 8px 14px; background: #fff; font: inherit; font-weight: 800; cursor: pointer; box-shadow: 0 2px 6px #0001; color: #1c1638; }
+  #hud button.on { background: #7c5cff; color: #fff; }
+  #board { display: grid; grid-template-columns: var(--h) repeat(var(--n), var(--c)); grid-template-rows: var(--h) repeat(var(--n), var(--c)); background: #fff; padding: 8px; border-radius: 16px; box-shadow: 0 20px 50px #3a2a8a22; }
+  .clue { display: flex; gap: 4px; font-weight: 800; font-size: calc(var(--c) * .42); color: #3a2a8a; transition: opacity .3s; }
+  .clue.col { flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 4px; }
+  .clue.row { justify-content: flex-end; align-items: center; padding-right: 6px; }
+  .clue.done { opacity: .3; }
+  .cell { border: 1px solid #d8d3f5; background: #fff; display: grid; place-items: center; font-weight: 900; color: #c0b8e8; font-size: calc(var(--c) * .5); transition: background .12s; }
+  .cell.f { background: #3a2a8a; border-color: #3a2a8a; animation: pop .18s ease-out; }
+  .cell.cur { outline: 3px solid #ff4fa3; outline-offset: -3px; }
+  .cell.bR { border-right: 2px solid #7c5cff; } .cell.bB { border-bottom: 2px solid #7c5cff; }
+  @keyframes pop { from { transform: scale(.6); } }
+  #board.won .cell.f { background: var(--col); border-color: var(--col); animation: reveal .5s ease both; }
+  @keyframes reveal { 50% { transform: scale(1.2); } }
+  #win { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1c1638; color: #fff; padding: 12px 20px; border-radius: 999px; font-weight: 900; display: flex; gap: 12px; align-items: center; }
+  #win[hidden] { display: none; }
+  #win button { border: 0; border-radius: 999px; padding: 8px 14px; background: #ffd23f; font: inherit; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" data-s="5">5×5</button><button type="button" data-s="10">10×10</button><button type="button" id="fill" class="on">⬛ Fill</button><button type="button" id="mark">✖ Mark</button><button type="button" id="clear">↻ Clear</button></div>
+  <div id="board"></div>
+  <div style="font-size:12px;opacity:.65;text-align:center">Numbers show runs of filled squares in each row/column · Drag to paint<br>Keyboard: arrows move, Space fills, X marks</div>
+</div>
+<div id="win" hidden><span id="winText"></span><button type="button" id="next">Next picture ▶</button></div>
+<script>
+(() => {
+  const PICS = {
+    5: [["Heart", "#ff4f7b", ".#.#.|#####|#####|.###.|..#.."], ["Star", "#ffb800", "..#..|.###.|#####|.###.|.#.#."], ["Smile", "#ff9f1c", ".#.#.|.#.#.|.....|#...#|.###."], ["Tree", "#2f9e44", "..#..|.###.|#####|..#..|..#.."], ["Arrow", "#3a86ff", "..#..|.##..|#####|.##..|..#.."], ["House", "#e8590c", "..#..|.###.|#####|#.#.#|##.##"], ["Bell", "#fab005", "..#..|.###.|.###.|#####|..#.."]],
+    10: [["Cat", "#f76707", "#........#|##......##|###....###|##########|#.##..##.#|##########|####..####|#.######.#|.########.|..######.."], ["Duck", "#fcc419", "....###...|...#####..|...##.###.|...#######|....###...|#..#####..|##########|##########|.########.|..######.."], ["Ghost", "#7c5cff", "...####...|.########.|##########|##..##..##|##..##..##|##########|##########|##########|##.##.##.#|#...#...#."], ["Rocket", "#e03131", "....##....|...####...|...####...|..##..##..|..##..##..|..######..|..######..|.########.|##.####.##|#..#..#..#"]]
+  };
+  const boardEl = document.getElementById("board");
+  let N = 5, pic, sol, state, cellsEl = [], rowClues, colClues, cur = 0, mode = 1, painting = null, won = false, kbd = false, lastPic = {};
+  const runs = (arr) => { const out = []; let n = 0; arr.forEach((v) => { if (v) n++; else if (n) { out.push(n); n = 0; } }); if (n) out.push(n); return out.length ? out : [0]; };
+  const rowOf = (a, r) => a.slice(r * N, r * N + N), colOf = (a, c) => Array.from({ length: N }, (_, r) => a[r * N + c]);
+  function newGame() {
+    document.querySelectorAll("[data-s]").forEach((b) => b.classList.toggle("on", +b.dataset.s === N));
+    const list = PICS[N]; let idx; do { idx = Math.floor(Math.random() * list.length); } while (list.length > 1 && idx === lastPic[N]); lastPic[N] = idx;
+    pic = list[idx]; sol = pic[2].split("|").join("").split("").map((ch) => (ch === "#" ? 1 : 0));
+    state = new Array(N * N).fill(0); won = false; document.getElementById("win").hidden = true;
+    rowClues = Array.from({ length: N }, (_, r) => runs(rowOf(sol, r))); colClues = Array.from({ length: N }, (_, c) => runs(colOf(sol, c)));
+    sizeBoard();
+    boardEl.style.setProperty("--col", pic[1]); boardEl.className = "";
+    boardEl.innerHTML = "<div></div>"; cellsEl = [];
+    colClues.forEach((cl) => { const d = document.createElement("div"); d.className = "clue col"; d.innerHTML = cl.map((n) => `<span>${n}</span>`).join(""); boardEl.appendChild(d); });
+    for (let r = 0; r < N; r++) {
+      const d = document.createElement("div"); d.className = "clue row"; d.innerHTML = rowClues[r].map((n) => `<span>${n}</span>`).join(""); boardEl.appendChild(d);
+      for (let c = 0; c < N; c++) {
+        const i = r * N + c, e = document.createElement("div"); e.className = "cell" + (N === 10 && c === 4 ? " bR" : "") + (N === 10 && r === 4 ? " bB" : ""); e.dataset.i = i;
+        boardEl.appendChild(e); cellsEl.push(e);
+      }
+    }
+    render();
+  }
+  function sizeBoard() {
+    const maxR = Math.max(...rowClues.map((r) => r.length)), maxC = Math.max(...colClues.map((c) => c.length));
+    const cs = Math.floor(Math.min((innerWidth - 40) / (N + maxR * 0.6), (innerHeight - 150) / (N + maxC * 0.6), 56));
+    boardEl.style.setProperty("--n", N); boardEl.style.setProperty("--c", cs + "px"); boardEl.style.setProperty("--h", Math.max(maxR, maxC) * cs * 0.55 + 6 + "px");
+  }
+  function set(i, v) { if (won || state[i] === v) return; state[i] = v; render(); check(); }
+  function render() {
+    cellsEl.forEach((e, i) => { e.classList.toggle("f", state[i] === 1); e.textContent = state[i] === 2 ? "✕" : ""; e.classList.toggle("cur", kbd && i === cur); });
+    const clues = boardEl.querySelectorAll(".clue");
+    colClues.forEach((cl, c) => clues[c].classList.toggle("done", runs(colOf(state.map((v) => (v === 1 ? 1 : 0)), c)).join() === cl.join()));
+    rowClues.forEach((cl, r) => clues[N + r].classList.toggle("done", runs(rowOf(state.map((v) => (v === 1 ? 1 : 0)), r)).join() === cl.join()));
+  }
+  function check() {
+    const f = state.map((v) => (v === 1 ? 1 : 0));
+    for (let k = 0; k < N; k++) if (runs(rowOf(f, k)).join() !== rowClues[k].join() || runs(colOf(f, k)).join() !== colClues[k].join()) return;
+    won = true;
+    cellsEl.forEach((e, i) => { e.style.animationDelay = (Math.floor(i / N) + i % N) * 30 + "ms"; if (state[i] === 2) e.textContent = ""; });
+    boardEl.className = "won";
+    document.getElementById("winText").textContent = `🎨 It's a ${pic[0]}!`;
+    setTimeout(() => (document.getElementById("win").hidden = false), 600);
+  }
+  const cellAt = (e) => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.classList.contains("cell") ? +el.dataset.i : -1; };
+  boardEl.addEventListener("pointerdown", (e) => {
+    const i = cellAt(e); if (i < 0 || won) return; kbd = false; cur = i;
+    const m = e.button === 2 ? 2 : mode;
+    painting = state[i] === m ? 0 : m; set(i, painting);
+  });
+  addEventListener("pointermove", (e) => { if (painting === null) return; const i = cellAt(e); if (i >= 0 && state[i] !== painting && (painting === 0 || state[i] === 0)) set(i, painting); });
+  addEventListener("pointerup", () => (painting = null));
+  boardEl.addEventListener("contextmenu", (e) => e.preventDefault());
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); kbd = true; const r = Math.max(0, Math.min(N - 1, Math.floor(cur / N) + m[0])), c = Math.max(0, Math.min(N - 1, cur % N + m[1])); cur = r * N + c; render(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (won) newGame(); else { kbd = true; set(cur, state[cur] === 1 ? 0 : 1); } }
+    if (k === "x") { kbd = true; set(cur, state[cur] === 2 ? 0 : 2); }
+  });
+  const fillB = document.getElementById("fill"), markB = document.getElementById("mark");
+  fillB.onclick = () => { mode = 1; fillB.classList.add("on"); markB.classList.remove("on"); };
+  markB.onclick = () => { mode = 2; markB.classList.add("on"); fillB.classList.remove("on"); };
+  document.getElementById("clear").onclick = () => { if (!won) { state.fill(0); render(); } };
+  document.getElementById("next").onclick = newGame;
+  document.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => { N = +b.dataset.s; newGame(); }));
+  addEventListener("resize", sizeBoard);
+  newGame();
+})();
+</script>
+</body>
+</html>

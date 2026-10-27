@@ -1,0 +1,21 @@
+{
+  "title": "Word Scramble",
+  "category": "Puzzle",
+  "description": "Unscramble the jumbled letters to find the hidden word before time runs out. Build a streak for bonus time and use a hint if you get stuck.",
+  "instructions": [
+    "Click or tap letters in order to spell the word, or just type it.",
+    "Backspace removes the last letter. Enter checks your answer.",
+    "Press the hint button (or ?) to reveal a letter.",
+    "Each correct word adds time to the clock."
+  ],
+  "tags": [
+    "words",
+    "spelling",
+    "letters",
+    "timer"
+  ],
+  "added": "2026-09-06",
+  "popularity": 64,
+  "license": "Original",
+  "source": "Original work"
+}

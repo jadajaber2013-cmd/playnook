@@ -1,0 +1,21 @@
+{
+  "title": "Mini Golf",
+  "category": "Sports",
+  "description": "Putt your way around nine playful mini golf holes with walls, ramps and water. Get the ball in the cup in as few strokes as possible.",
+  "instructions": [
+    "Drag back from the ball to aim and set the power, then let go.",
+    "Keyboard: Left and Right aim, hold Space for power, release to putt.",
+    "Avoid the water — it costs a stroke.",
+    "Try to finish each hole at or under par."
+  ],
+  "tags": [
+    "golf",
+    "putting",
+    "holes",
+    "physics"
+  ],
+  "added": "2026-09-28",
+  "popularity": 84,
+  "license": "Original",
+  "source": "Original work"
+}

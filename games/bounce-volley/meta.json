@@ -1,0 +1,21 @@
+{
+  "title": "Bounce Volley",
+  "category": "Sports",
+  "description": "One-on-one beach volleyball with bouncy blob players. Jump, head the ball over the net and make it land on the computer's side. First to 7!",
+  "instructions": [
+    "Move with Left and Right (or A and D). Jump with Up, W or Space.",
+    "On touch screens, use the on-screen buttons.",
+    "Hit the ball over the net — don't let it land on your side.",
+    "First to 7 points wins."
+  ],
+  "tags": [
+    "volleyball",
+    "beach",
+    "jump",
+    "vs computer"
+  ],
+  "added": "2026-10-12",
+  "popularity": 76,
+  "license": "Original",
+  "source": "Original work"
+}

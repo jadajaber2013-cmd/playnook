@@ -1,0 +1,21 @@
+{
+  "title": "River Rush",
+  "category": "Racing",
+  "description": "Paddle a speedy canoe down a wild river. Dodge rocks and logs, ride the fast currents and collect gems as the river gets wilder.",
+  "instructions": [
+    "Steer with the arrow keys or A and D.",
+    "On touch screens, hold the left or right side of the screen.",
+    "Avoid rocks, logs and the river banks.",
+    "Collect gems for bonus points."
+  ],
+  "tags": [
+    "boat",
+    "river",
+    "dodge",
+    "water"
+  ],
+  "added": "2026-09-17",
+  "popularity": 71,
+  "license": "Original",
+  "source": "Original work"
+}

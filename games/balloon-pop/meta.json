@@ -1,0 +1,21 @@
+{
+  "title": "Balloon Pop",
+  "category": "Kids",
+  "description": "Balloons are floating up into the sky! Pop the ones that match the colour shown at the top. A cheerful game that helps young players learn colours.",
+  "instructions": [
+    "Click or tap a balloon to pop it.",
+    "Only pop balloons of the colour shown at the top.",
+    "Keyboard: Tab between balloons and press Space to pop.",
+    "Every 10 pops, the colour changes."
+  ],
+  "tags": [
+    "balloons",
+    "colors",
+    "learning",
+    "toddler"
+  ],
+  "added": "2026-09-22",
+  "popularity": 79,
+  "license": "Original",
+  "source": "Original work"
+}

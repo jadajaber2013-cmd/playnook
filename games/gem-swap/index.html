@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gem Swap</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: radial-gradient(ellipse at top, #3b1f6e, #120a2a); color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span { background: #ffffff18; padding: 7px 13px; border-radius: 999px; }
+  #prog { width: min(420px, 90vw); height: 12px; border-radius: 6px; background: #ffffff1a; overflow: hidden; }
+  #prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff4fa3, #ffd23f); transition: width .4s; }
+  canvas { display: block; border-radius: 18px; box-shadow: 0 20px 60px #0009; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; text-align: center; font-size: 30px; font-weight: 900; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #msg button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="lvl">Level 1</span><span id="score">⭐ 0</span><span id="moves">Moves 20</span></div>
+  <div id="prog"><i id="bar"></i></div>
+  <canvas id="c"></canvas>
+  <div style="font-size:12px;opacity:.7;text-align:center">Swipe a gem onto a neighbour · Keyboard: arrows move, Space selects, arrow swaps</div>
+</div>
+<div id="msg" hidden><div id="msgIn"></div></div>
+<script>
+(() => {
+  const N = 8, TYPES = 6, COLS = ["#ff4f7b", "#ffd23f", "#51cf66", "#4dabf7", "#b15cff", "#ff9f1c"];
+  const c = document.getElementById("c"), x = c.getContext("2d");
+  let cell, g, level = 1, score, moves, target, busy = false, sel = null, cur = 27, kbd = false, fx = [], combo = 0, pending = null, t = 0, drag = null;
+  try { level = +localStorage.getItem("gem-swap-level") || 1; } catch (e) {}
+  const rnd = () => Math.floor(Math.random() * TYPES);
+  function layout() { cell = Math.floor(Math.min((innerWidth - 20) / N, (innerHeight - 130) / N, 72)); const d = Math.min(devicePixelRatio || 1, 2); c.style.width = c.style.height = cell * N + "px"; c.width = c.height = cell * N * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  function matchesAt(grid) {
+    const hit = new Set();
+    for (let r = 0; r < N; r++) for (let col = 0; col < N; col++) {
+      const t0 = grid[r][col] && grid[r][col].t; if (t0 == null) continue;
+      if (col <= N - 3 && grid[r][col + 1] && grid[r][col + 2] && grid[r][col + 1].t === t0 && grid[r][col + 2].t === t0) { let k = col; while (k < N && grid[r][k] && grid[r][k].t === t0) hit.add(r * N + k++); }
+      if (r <= N - 3 && grid[r + 1][col] && grid[r + 2][col] && grid[r + 1][col].t === t0 && grid[r + 2][col].t === t0) { let k = r; while (k < N && grid[k][col] && grid[k][col].t === t0) hit.add(k++ * N + col); }
+    }
+    return hit;
+  }
+  function hasMove() {
+    for (let r = 0; r < N; r++) for (let col = 0; col < N; col++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+      const r2 = r + dr, c2 = col + dc; if (r2 >= N || c2 >= N) continue;
+      [g[r][col], g[r2][c2]] = [g[r2][c2], g[r][col]]; const m = matchesAt(g).size; [g[r][col], g[r2][c2]] = [g[r2][c2], g[r][col]];
+      if (m) return true;
+    }
+    return false;
+  }
+  function fill() {
+    do {
+      g = Array.from({ length: N }, (_, r) => Array.from({ length: N }, (_, col) => ({ t: rnd(), rx: col, ry: r - N - 2 - Math.random(), s: 1 })));
+      let m; while ((m = matchesAt(g)).size) m.forEach((i) => (g[Math.floor(i / N)][i % N].t = rnd()));
+    } while (!hasMove());
+  }
+  function start() {
+    score = 0; moves = 20 + Math.min(10, level); target = 900 + level * 450; combo = 0; sel = null;
+    document.getElementById("msg").hidden = true; fill(); hud();
+  }
+  function hud() {
+    document.getElementById("lvl").textContent = "Level " + level; document.getElementById("score").textContent = `⭐ ${score} / ${target}`;
+    document.getElementById("moves").textContent = "Moves " + moves; document.getElementById("bar").style.width = Math.min(100, score / target * 100) + "%";
+  }
+  function trySwap(a, b) {
+    if (busy || moves <= 0) return;
+    const [r1, c1] = [Math.floor(a / N), a % N], [r2, c2] = [Math.floor(b / N), b % N];
+    if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) return;
+    [g[r1][c1], g[r2][c2]] = [g[r2][c2], g[r1][c1]];
+    sel = null; combo = 0; busy = true;
+    pending = matchesAt(g).size ? { type: "resolve", user: true } : { type: "undo", a, b };
+  }
+  function step() {
+    if (!pending || !settled()) return;
+    const p = pending; pending = null;
+    if (p.type === "undo") { const [r1, c1, r2, c2] = [Math.floor(p.a / N), p.a % N, Math.floor(p.b / N), p.b % N]; [g[r1][c1], g[r2][c2]] = [g[r2][c2], g[r1][c1]]; pending = { type: "done" }; return; }
+    if (p.type === "resolve") {
+      if (p.user) { moves--; hud(); }
+      const m = matchesAt(g);
+      if (!m.size) { pending = { type: "done" }; return; }
+      combo++;
+      const pts = m.size * 20 * combo + (m.size >= 5 ? 200 : m.size === 4 ? 60 : 0); score += pts;
+      let sx = 0, sy = 0;
+      m.forEach((i) => { const r = Math.floor(i / N), col = i % N, q = g[r][col]; q.dying = 1; sx += col; sy += r; burst(col, r, COLS[q.t]); });
+      fx.push({ text: `+${pts}${combo > 1 ? `  combo x${combo}` : ""}`, x: (sx / m.size + 0.5) * cell, y: (sy / m.size + 0.5) * cell, life: 1 });
+      if (combo >= 3) fx.push({ text: ["Sweet!", "Amazing!", "Spectacular!"][Math.min(2, combo - 3)], x: N * cell / 2, y: N * cell / 2, life: 1.3, big: true });
+      hud(); pending = { type: "fall", hit: m }; return;
+    }
+    if (p.type === "fall") {
+      p.hit.forEach((i) => (g[Math.floor(i / N)][i % N] = null));
+      for (let col = 0; col < N; col++) {
+        let write = N - 1;
+        for (let r = N - 1; r >= 0; r--) if (g[r][col]) { const q = g[r][col]; g[r][col] = null; g[write][col] = q; write--; }
+        for (let r = write, k = 1; r >= 0; r--, k++) g[r][col] = { t: rnd(), rx: col, ry: -k - 0.3, s: 1 };
+      }
+      pending = { type: "resolve" }; return;
+    }
+    if (p.type === "done") {
+      busy = false;
+      if (score >= target) return end(true);
+      if (moves <= 0) return end(false);
+      if (!hasMove()) { fx.push({ text: "Shuffling…", x: N * cell / 2, y: N * cell / 2, life: 1.2, big: true }); g.forEach((row) => row.forEach((q) => (q.ry -= N + 2))); fill(); }
+    }
+  }
+  function burst(col, r, color) { for (let i = 0; i < 8; i++) { const a = Math.random() * 7, s = 1.5 + Math.random() * 3; fx.push({ x: (col + 0.5) * cell, y: (r + 0.5) * cell, vx: Math.cos(a) * s * cell, vy: Math.sin(a) * s * cell, life: 0.6, color }); } }
+  function end(win) {
+    if (win) { level++; try { localStorage.setItem("gem-swap-level", level); } catch (e) {} }
+    document.getElementById("msgIn").innerHTML = win ? `💎 Level complete!<small>Score ${score}. Next target: ${900 + level * 450}</small><button type="button" id="go">Level ${level} ▶</button>` : `😢 Out of moves<small>Score ${score} of ${target}</small><button type="button" id="go">Try again</button>`;
+    document.getElementById("msg").hidden = false; document.getElementById("go").onclick = start;
+  }
+  function gem(type, cx, cy, r, s) {
+    x.save(); x.translate(cx, cy); x.scale(s, s);
+    const col = COLS[type], grd = x.createLinearGradient(-r, -r, r, r); grd.addColorStop(0, "#fff"); grd.addColorStop(0.3, col); grd.addColorStop(1, col);
+    x.fillStyle = grd; x.strokeStyle = "#0004"; x.lineWidth = 2; x.beginPath();
+    const sides = [0, 4, 3, 6, 5, 8][type];
+    if (!sides) x.arc(0, 0, r * 0.85, 0, 7);
+    else if (sides === 4) { x.moveTo(0, -r); x.lineTo(r * 0.8, 0); x.lineTo(0, r); x.lineTo(-r * 0.8, 0); x.closePath(); }
+    else for (let i = 0; i < sides; i++) { const a = (i / sides) * Math.PI * 2 - Math.PI / 2; x.lineTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9); }
+    x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = "#ffffff99"; x.beginPath(); x.ellipse(-r * 0.25, -r * 0.35, r * 0.25, r * 0.12, -0.6, 0, 7); x.fill();
+    x.restore();
+  }
+  function draw(dt) {
+    t += dt;
+    x.clearRect(0, 0, N * cell, N * cell);
+    for (let r = 0; r < N; r++) for (let col = 0; col < N; col++) { x.fillStyle = (r + col) % 2 ? "#ffffff10" : "#ffffff1c"; x.fillRect(col * cell, r * cell, cell, cell); }
+    for (let r = 0; r < N; r++) for (let col = 0; col < N; col++) {
+      const p = g[r][col]; if (!p) continue;
+      const sp = 14 * dt;
+      p.rx += Math.max(-sp, Math.min(sp, col - p.rx)); p.ry += Math.max(-sp * 1.3, Math.min(sp * 1.3, r - p.ry));
+      if (p.dying) { p.s = Math.max(0, p.s - dt * 6); if (p.s === 0) p.dying = 0, p.dead = true; }
+      if (p.dead) continue;
+      const isSel = sel === r * N + col, pulse = isSel ? 1.1 + Math.sin(t * 10) * 0.05 : 1;
+      if (p.ry > -1) gem(p.t, (p.rx + 0.5) * cell, (p.ry + 0.5) * cell, cell * 0.4, p.s * pulse);
+      if (kbd && r * N + col === cur) { x.strokeStyle = "#7cf7ff"; x.lineWidth = 3; x.strokeRect(col * cell + 3, r * cell + 3, cell - 6, cell - 6); }
+    }
+    for (const f of fx) {
+      f.life -= dt; x.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
+      if (f.text) { f.y -= 30 * dt; x.font = `900 ${f.big ? cell * 0.7 : cell * 0.38}px system-ui`; x.textAlign = "center"; x.lineWidth = 5; x.strokeStyle = "#0008"; x.strokeText(f.text, f.x, f.y); x.fillStyle = f.big ? "#ffd23f" : "#fff"; x.fillText(f.text, f.x, f.y); }
+      else { f.x += f.vx * dt; f.y += f.vy * dt; x.fillStyle = f.color; x.beginPath(); x.arc(f.x, f.y, cell * 0.07, 0, 7); x.fill(); }
+    }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.life > 0);
+  }
+  // the board is "settled" when every gem has finished moving or vanishing
+  const settled = () => g.every((row, r) => row.every((p, col) => !p || p.dead || (Math.abs(p.rx - col) < 0.01 && Math.abs(p.ry - r) < 0.01 && !p.dying)));
+  let last = 0;
+  function loop(now) { const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; draw(dt); if (pending && settled()) step(); requestAnimationFrame(loop); }
+  const idxAt = (e) => { const r = c.getBoundingClientRect(), col = Math.floor((e.clientX - r.left) / cell), row = Math.floor((e.clientY - r.top) / cell); return col >= 0 && col < N && row >= 0 && row < N ? row * N + col : -1; };
+  c.addEventListener("pointerdown", (e) => {
+    const i = idxAt(e); if (i < 0 || busy) return; kbd = false;
+    if (sel !== null && sel !== i) { const a = sel; sel = null; trySwap(a, i); return; }
+    sel = i; drag = { i, x: e.clientX, y: e.clientY };
+  });
+  addEventListener("pointermove", (e) => {
+    if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) > cell * 0.35) {
+      const r = Math.floor(drag.i / N), col = drag.i % N, tr = r + (Math.abs(dy) > Math.abs(dx) ? Math.sign(dy) : 0), tc = col + (Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0);
+      const a = drag.i; drag = null; if (tr >= 0 && tr < N && tc >= 0 && tc < N) trySwap(a, tr * N + tc);
+    }
+  });
+  addEventListener("pointerup", () => (drag = null));
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) {
+      e.preventDefault(); kbd = true;
+      const r = Math.max(0, Math.min(N - 1, Math.floor(cur / N) + m[0])), col = Math.max(0, Math.min(N - 1, cur % N + m[1])), nx = r * N + col;
+      if (sel !== null) { const a = sel; sel = null; trySwap(a, nx); } else cur = nx;
+    }
+    if (k === " " || k === "enter") { e.preventDefault(); if (!document.getElementById("msg").hidden) document.getElementById("go").click(); else { kbd = true; sel = sel === cur ? null : cur; } }
+  });
+  addEventListener("resize", layout);
+  layout(); start(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

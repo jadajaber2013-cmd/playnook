@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Color Echo</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: radial-gradient(circle, #2b1d52, #0e0820); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; }
+  #status { font-size: 22px; font-weight: 900; min-height: 1.3em; }
+  #board { position: relative; width: min(84vw, 62vh, 440px); aspect-ratio: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; transform: rotate(45deg); }
+  .pad { border: 0; border-radius: 30px; cursor: pointer; opacity: .45; transition: opacity .12s, transform .12s, box-shadow .12s; }
+  .pad.lit { opacity: 1; transform: scale(1.05); box-shadow: 0 0 50px var(--c); }
+  .pad:active { transform: scale(.96); }
+  #center { position: absolute; inset: 32%; border-radius: 50%; background: #1a1238; display: grid; place-items: center; box-shadow: 0 0 0 10px #0e0820; }
+  #center span { transform: rotate(-45deg); font-weight: 900; font-size: clamp(22px, 6vmin, 36px); }
+  #start { border: 0; border-radius: 999px; padding: 12px 26px; background: #ffd23f; color: #3a2400; font: 900 18px system-ui; cursor: pointer; }
+  #best { opacity: .7; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="status">Watch, listen, repeat!</div>
+  <div id="board">
+    <button type="button" class="pad" style="--c:#51cf66;background:#51cf66" aria-label="Green pad (1)"></button>
+    <button type="button" class="pad" style="--c:#ff4f6d;background:#ff4f6d" aria-label="Red pad (2)"></button>
+    <button type="button" class="pad" style="--c:#ffd23f;background:#ffd23f" aria-label="Yellow pad (3)"></button>
+    <button type="button" class="pad" style="--c:#4dabf7;background:#4dabf7" aria-label="Blue pad (4)"></button>
+    <div id="center"><span id="round">0</span></div>
+  </div>
+  <button type="button" id="start">▶ Start</button>
+  <div id="best"></div>
+</div>
+<script>
+(() => {
+  const FREQ = [392, 523.25, 659.25, 783.99];
+  const pads = [...document.querySelectorAll(".pad")], status = document.getElementById("status"), startB = document.getElementById("start");
+  let seq = [], idx = 0, accepting = false, best = 0, audio;
+  try { best = +localStorage.getItem("color-echo-best") || 0; } catch (e) {}
+  const bestEl = document.getElementById("best"); bestEl.textContent = "Best: " + best;
+  function tone(f, d) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.type = "triangle"; o.frequency.value = f; g.gain.setValueAtTime(0.25, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + d); } catch (e) {} }
+  function flash(i, ms) { pads[i].classList.add("lit"); tone(FREQ[i], ms / 1000 + 0.05); setTimeout(() => pads[i].classList.remove("lit"), ms); }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function playSeq() {
+    accepting = false; status.textContent = "Watch…"; await wait(600);
+    const sp = Math.max(220, 520 - seq.length * 22);
+    for (const i of seq) { flash(i, sp * 0.75); await wait(sp); }
+    status.textContent = "Your turn!"; idx = 0; accepting = true;
+  }
+  function next() { seq.push(Math.floor(Math.random() * 4)); document.getElementById("round").textContent = seq.length; playSeq(); }
+  function start() { seq = []; startB.hidden = true; next(); }
+  function press(i) {
+    if (!accepting) return;
+    flash(i, 220);
+    if (i !== seq[idx]) {
+      accepting = false; const score = seq.length - 1;
+      tone(110, 0.6); pads.forEach((p) => p.classList.add("lit")); setTimeout(() => pads.forEach((p) => p.classList.remove("lit")), 400);
+      if (score > best) { best = score; try { localStorage.setItem("color-echo-best", best); } catch (e) {} bestEl.textContent = "Best: " + best; }
+      status.textContent = `Oops! You remembered ${score} step${score === 1 ? "" : "s"}.`;
+      startB.textContent = "↻ Play again"; startB.hidden = false; return;
+    }
+    idx++;
+    if (idx === seq.length) { accepting = false; status.textContent = ["Nice!", "Great!", "Awesome!", "Super memory!"][Math.min(3, Math.floor(seq.length / 4))]; setTimeout(next, 700); }
+  }
+  pads.forEach((p, i) => p.addEventListener("pointerdown", (e) => { e.preventDefault(); press(i); }));
+  startB.onclick = start;
+  addEventListener("keydown", (e) => {
+    const m = { "1": 0, "2": 1, "3": 2, "4": 3, arrowup: 0, arrowright: 1, arrowleft: 2, arrowdown: 3 }[e.key.toLowerCase()];
+    if (m !== undefined) { e.preventDefault(); press(m); }
+    if ((e.key === " " || e.key === "Enter") && !startB.hidden) { e.preventDefault(); start(); }
+  });
+})();
+</script>
+</body>
+</html>

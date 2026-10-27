@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Bubble Shooter</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1446; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; margin: 0 auto; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0009; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🫧 Bubble Shooter<small>Aim with the mouse or your finger and release to shoot.<br>Keyboard: ← → aim, Space shoots.<br>Match 3 or more of the same colour!<br>Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const VW = 480, VH = 720, R = 24, RH = R * Math.sqrt(3), COLS = 10, DEAD_ROW = 13, SY = 660;
+  const COLORS = ["#ff5d73", "#ffd23f", "#2ec4b6", "#3a86ff", "#b15cff", "#ff9f1c"];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let scale, grid, shift, shot, cur, next, angle = -Math.PI / 2, score, level, shots, state = "menu", last = 0, fx = [], falling = [], aiming = false, keys = {}, best = 0;
+  try { best = +localStorage.getItem("bubble-shooter-best") || 0; } catch (e) {}
+  function resize() {
+    scale = Math.min(innerWidth / VW, innerHeight / VH); const d = Math.min(devicePixelRatio || 1, 2);
+    c.style.width = VW * scale + "px"; c.style.height = VH * scale + "px"; c.style.marginTop = (innerHeight - VH * scale) / 2 + "px";
+    c.width = VW * scale * d; c.height = VH * scale * d; x.setTransform(scale * d, 0, 0, scale * d, 0, 0);
+  }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  const key = (r, col) => r + "," + col;
+  const odd = (r) => (r + shift) % 2 === 1;
+  const cols = (r) => (odd(r) ? COLS - 1 : COLS);
+  const pos = (r, col) => ({ x: R + col * 2 * R + (odd(r) ? R : 0), y: R + r * RH + 6 });
+  function neighbors(r, col) {
+    const o = odd(r), d = o ? [[0, -1], [0, 1], [-1, 0], [-1, 1], [1, 0], [1, 1]] : [[0, -1], [0, 1], [-1, -1], [-1, 0], [1, -1], [1, 0]];
+    return d.map(([dr, dc]) => [r + dr, col + dc]).filter(([rr, cc]) => rr >= 0 && cc >= 0 && cc < cols(rr));
+  }
+  const palette = () => COLORS.slice(0, Math.min(3 + level, COLORS.length));
+  function pickColor() { const present = [...new Set(grid.values())]; const p = present.length ? present : palette(); return p[Math.floor(Math.random() * p.length)]; }
+
+  function newLevel() {
+    grid = new Map(); shift = 0; shots = 0;
+    const rows = Math.min(4 + level, 8), pal = palette();
+    for (let r = 0; r < rows; r++) for (let col = 0; col < cols(r); col++) grid.set(key(r, col), pal[Math.floor(Math.random() * pal.length)]);
+    cur = pickColor(); next = pickColor(); shot = null;
+  }
+  function start() { score = 0; level = 1; fx = []; falling = []; newLevel(); state = "play"; msg.hidden = true; }
+
+  function addRow() {
+    const old = grid; grid = new Map(); shift = (shift + 1) % 2;
+    for (const [k, v] of old) { const [r, col] = k.split(",").map(Number); grid.set(key(r + 1, col), v); }
+    const pal = palette();
+    for (let col = 0; col < cols(0); col++) grid.set(key(0, col), pal[Math.floor(Math.random() * pal.length)]);
+    for (const k of [...grid.keys()]) { const [r, col] = k.split(",").map(Number); if (col >= cols(r)) grid.delete(k); }
+  }
+
+  function fire() {
+    if (shot || state !== "play") return;
+    const sp = 900;
+    shot = { x: VW / 2, y: SY, vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, color: cur };
+    cur = next; next = pickColor();
+  }
+
+  function snap(px, py, color) {
+    let bestCell = null, bd = Infinity;
+    const r0 = Math.max(0, Math.round((py - R - 6) / RH));
+    for (let r = Math.max(0, r0 - 1); r <= r0 + 1; r++) for (let col = 0; col < cols(r); col++) {
+      if (grid.has(key(r, col))) continue;
+      const p = pos(r, col), d = (p.x - px) ** 2 + (p.y - py) ** 2;
+      if (d < bd && (r === 0 || neighbors(r, col).some(([a, b]) => grid.has(key(a, b))))) { bd = d; bestCell = [r, col]; }
+    }
+    if (!bestCell) return;
+    const [r, col] = bestCell; grid.set(key(r, col), color);
+    // find the matching group
+    const group = [[r, col]], seen = new Set([key(r, col)]);
+    for (let i = 0; i < group.length; i++) for (const [a, b] of neighbors(...group[i])) { const k = key(a, b); if (!seen.has(k) && grid.get(k) === color) { seen.add(k); group.push([a, b]); } }
+    if (group.length >= 3) {
+      group.forEach(([a, b], i) => { const p = pos(a, b); grid.delete(key(a, b)); pop(p.x, p.y, color, i * 0.03); });
+      score += group.length * 10;
+      // drop bubbles no longer attached to the top
+      const attached = new Set(), q = [];
+      for (let col2 = 0; col2 < cols(0); col2++) if (grid.has(key(0, col2))) { attached.add(key(0, col2)); q.push([0, col2]); }
+      for (let i = 0; i < q.length; i++) for (const [a, b] of neighbors(...q[i])) { const k = key(a, b); if (grid.has(k) && !attached.has(k)) { attached.add(k); q.push([a, b]); } }
+      let dropped = 0;
+      for (const [k, v] of [...grid]) if (!attached.has(k)) { const [a, b] = k.split(",").map(Number), p = pos(a, b); grid.delete(k); falling.push({ x: p.x, y: p.y, vx: (Math.random() - 0.5) * 200, vy: -150 - Math.random() * 100, color: v }); dropped++; }
+      if (dropped) { score += dropped * 20; fx.push({ text: `Drop! +${dropped * 20}`, x: VW / 2, y: VH / 2, life: 1.2 }); }
+      if (group.length >= 5) fx.push({ text: `Combo +${group.length * 10}`, x: pos(r, col).x, y: pos(r, col).y, life: 1 });
+    } else {
+      shots++;
+      if (shots % Math.max(3, 7 - level) === 0) addRow();
+    }
+    if (!grid.size) { level++; score += 200; fx.push({ text: `Level ${level}!`, x: VW / 2, y: VH / 2, life: 1.5 }); newLevel(); }
+    for (const k of grid.keys()) if (+k.split(",")[0] >= DEAD_ROW) return gameOver();
+    if (!grid.has(key(0, 0)) && grid.size && !palette().includes(cur)) cur = pickColor();
+  }
+  function pop(px, py, color, delay) { for (let i = 0; i < 8; i++) { const a = Math.random() * 7, s = 80 + Math.random() * 160; fx.push({ x: px, y: py, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + delay, delay, color }); } fx.push({ ring: true, x: px, y: py, r: R * 0.6, life: 0.3 + delay, delay }); }
+  function gameOver() {
+    state = "over";
+    if (score > best) { best = score; try { localStorage.setItem("bubble-shooter-best", best); } catch (e) {} }
+    show("Game over", `Score: ${score} · Level ${level} · Best: ${best}<br>Press Space or tap to play again`);
+  }
+
+  function update(dt) {
+    if (keys.left) angle -= 1.8 * dt; if (keys.right) angle += 1.8 * dt;
+    angle = Math.max(-Math.PI + 0.12, Math.min(-0.12, angle));
+    if (!shot) return;
+    const steps = 8;
+    for (let i = 0; i < steps && shot; i++) {
+      shot.x += shot.vx * dt / steps; shot.y += shot.vy * dt / steps;
+      if (shot.x < R) { shot.x = R; shot.vx *= -1; } if (shot.x > VW - R) { shot.x = VW - R; shot.vx *= -1; }
+      let hit = shot.y < R + 6;
+      if (!hit) for (const k of grid.keys()) { const [a, b] = k.split(",").map(Number), p = pos(a, b); if ((p.x - shot.x) ** 2 + (p.y - shot.y) ** 2 < (R * 1.75) ** 2) { hit = true; break; } }
+      if (hit) { const s = shot; shot = null; snap(s.x, s.y, s.color); }
+    }
+  }
+
+  function bubble(px, py, color, rr = R - 1) {
+    const g = x.createRadialGradient(px - rr * 0.35, py - rr * 0.35, rr * 0.1, px, py, rr);
+    g.addColorStop(0, "#fff"); g.addColorStop(0.25, color); g.addColorStop(1, color);
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, rr, 0, 7); x.fill();
+    x.strokeStyle = "#0003"; x.lineWidth = 2; x.stroke();
+  }
+
+  function draw(dt) {
+    const g = x.createLinearGradient(0, 0, 0, VH); g.addColorStop(0, "#2b1d6b"); g.addColorStop(1, "#140f33");
+    x.fillStyle = g; x.fillRect(0, 0, VW, VH);
+    x.strokeStyle = "#ff5d7355"; x.setLineDash([8, 8]); x.lineWidth = 2; x.beginPath(); const dy = R + DEAD_ROW * RH + 6 - R; x.moveTo(0, dy); x.lineTo(VW, dy); x.stroke(); x.setLineDash([]);
+    if (!grid) return;
+    const tt = performance.now() / 1000;
+    for (const [k, v] of grid) { const [a, b] = k.split(",").map(Number), p = pos(a, b); bubble(p.x, p.y + Math.sin(tt * 2 + a + b) * 0.8, v); }
+    for (const f of falling) { f.vy += 1200 * dt; f.x += f.vx * dt; f.y += f.vy * dt; bubble(f.x, f.y, f.color); }
+    falling = falling.filter((f) => f.y < VH + 40);
+    if (state === "play") {
+      x.strokeStyle = "#ffffff66"; x.lineWidth = 3; x.setLineDash([2, 12]); x.lineCap = "round";
+      let ax = VW / 2, ay = SY, vx = Math.cos(angle), vy = Math.sin(angle); x.beginPath(); x.moveTo(ax, ay);
+      for (let i = 0; i < 70; i++) { ax += vx * 9; ay += vy * 9; if (ax < R || ax > VW - R) vx *= -1; if (ay < R) break; x.lineTo(ax, ay); }
+      x.stroke(); x.setLineDash([]);
+    }
+    x.fillStyle = "#3a2c7a"; x.beginPath(); x.arc(VW / 2, SY + 10, 46, Math.PI, 0); x.fill();
+    x.save(); x.translate(VW / 2, SY); x.rotate(angle + Math.PI / 2); x.fillStyle = "#6c5ce7"; x.beginPath(); x.roundRect(-10, -48, 20, 48, 6); x.fill(); x.restore();
+    bubble(VW / 2, SY, cur);
+    x.fillStyle = "#fff"; x.font = "700 13px system-ui"; x.textAlign = "center"; x.fillText("next", VW / 2 + 90, SY + 40); bubble(VW / 2 + 90, SY + 10, next, R * 0.7);
+    if (shot) bubble(shot.x, shot.y, shot.color);
+    for (const f of fx) {
+      if (f.delay > 0) { f.delay -= dt; continue; }
+      f.life -= dt; x.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
+      if (f.text) { f.y -= 40 * dt; x.font = "900 30px system-ui"; x.fillStyle = "#ffd23f"; x.strokeStyle = "#0008"; x.lineWidth = 6; x.strokeText(f.text, f.x, f.y); x.fillText(f.text, f.x, f.y); }
+      else if (f.ring) { f.r += 160 * dt; x.strokeStyle = "#fff"; x.lineWidth = 3; x.beginPath(); x.arc(f.x, f.y, f.r, 0, 7); x.stroke(); }
+      else { f.x += f.vx * dt; f.y += f.vy * dt; x.fillStyle = f.color; x.beginPath(); x.arc(f.x, f.y, 4, 0, 7); x.fill(); }
+    }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.life > 0);
+    x.fillStyle = "#fff"; x.font = "900 20px system-ui"; x.textAlign = "left"; x.fillText(`⭐ ${score}`, 12, VH - 18); x.textAlign = "right"; x.fillText(`Level ${level}  🏆 ${best}`, VW - 12, VH - 18);
+  }
+
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const aimAt = (e) => { const r = c.getBoundingClientRect(), px = (e.clientX - r.left) / scale, py = (e.clientY - r.top) / scale; angle = Math.atan2(Math.min(py - SY, -10), px - VW / 2); };
+  c.addEventListener("pointerdown", (e) => { if (state !== "play") return; aiming = true; aimAt(e); });
+  addEventListener("pointermove", (e) => { if (state === "play" && (aiming || e.pointerType === "mouse")) aimAt(e); });
+  addEventListener("pointerup", (e) => { if (aiming) { aiming = false; aimAt(e); fire(); } });
+  msg.addEventListener("pointerdown", () => { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "arrowleft" || k === "a") { keys.left = true; e.preventDefault(); }
+    if (k === "arrowright" || k === "d") { keys.right = true; e.preventDefault(); }
+    if (k === " " || k === "enter" || k === "arrowup" || k === "w") { e.preventDefault(); if (state === "play") fire(); else if (state === "paused") { state = "play"; msg.hidden = true; } else if (k !== "arrowup" && k !== "w") start(); }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); }
+  });
+  addEventListener("keyup", (e) => { const k = e.key.toLowerCase(); if (k === "arrowleft" || k === "a") keys.left = false; if (k === "arrowright" || k === "d") keys.right = false; });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

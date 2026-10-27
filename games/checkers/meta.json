@@ -1,0 +1,21 @@
+{
+  "title": "Checkers",
+  "category": "Strategy",
+  "description": "The timeless board game against the computer. Jump over your opponent's pieces, chain multiple jumps and crown your kings.",
+  "instructions": [
+    "Click or tap a piece, then click where to move it.",
+    "Keyboard: arrows move, Space selects and moves.",
+    "Jumps are compulsory. Reach the far side to become a king.",
+    "Capture all opposing pieces to win."
+  ],
+  "tags": [
+    "draughts",
+    "board game",
+    "classic",
+    "vs computer"
+  ],
+  "added": "2026-09-13",
+  "popularity": 78,
+  "license": "Original",
+  "source": "Original work"
+}

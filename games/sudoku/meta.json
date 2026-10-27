@@ -1,0 +1,21 @@
+{
+  "title": "Sudoku",
+  "category": "Puzzle",
+  "description": "Fill the grid so every row, column and 3×3 box contains the numbers 1 to 9. Fresh puzzles every time in Easy, Medium and Hard, with notes and mistake highlighting.",
+  "instructions": [
+    "Click or tap a cell, then pick a number.",
+    "Keyboard: arrow keys move, 1–9 fill a cell, Backspace clears it.",
+    "Press N to switch notes mode on and off.",
+    "Mistakes are shown in red."
+  ],
+  "tags": [
+    "sudoku",
+    "numbers",
+    "logic",
+    "classic"
+  ],
+  "added": "2026-10-16",
+  "popularity": 82,
+  "license": "Original",
+  "source": "Original work"
+}

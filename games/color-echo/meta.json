@@ -1,0 +1,21 @@
+{
+  "title": "Color Echo",
+  "category": "Kids",
+  "description": "Watch the coloured pads light up and play a tune, then repeat the pattern. Every round adds one more step — how long can your memory keep up?",
+  "instructions": [
+    "Watch and listen to the pattern.",
+    "Repeat it by clicking or tapping the pads.",
+    "Keyboard: keys 1–4 (or the arrow keys) press the pads.",
+    "One mistake ends the game."
+  ],
+  "tags": [
+    "memory",
+    "pattern",
+    "music",
+    "colors"
+  ],
+  "added": "2026-10-26",
+  "popularity": 75,
+  "license": "Original",
+  "source": "Original work"
+}

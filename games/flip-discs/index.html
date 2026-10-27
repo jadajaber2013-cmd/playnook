@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Flip Discs</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #0b3d2e, #062019); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; align-items: center; }
+  #hud span, #hud button { background: #ffffff18; border: 0; color: #fff; font: inherit; font-weight: 800; padding: 7px 13px; border-radius: 999px; }
+  #hud button { cursor: pointer; } #hud button.on { background: #ffd23f; color: #3a2400; }
+  #status { font-weight: 900; font-size: 19px; min-height: 1.3em; text-align: center; }
+  #board { display: grid; grid-template-columns: repeat(8, var(--c)); gap: 3px; padding: 8px; background: #1b5e44; border-radius: 16px; box-shadow: 0 20px 50px #0008, inset 0 0 0 3px #2b8a62; }
+  .sq { width: var(--c); height: var(--c); background: #2f9e6e; border-radius: 6px; display: grid; place-items: center; cursor: pointer; perspective: 300px; position: relative; }
+  .sq.cur { outline: 3px solid #ffd23f; outline-offset: -3px; }
+  .sq.hint::after { content: ""; width: 26%; height: 26%; border-radius: 50%; background: #ffffff55; }
+  .d { width: 82%; height: 82%; border-radius: 50%; position: relative; transform-style: preserve-3d; transition: transform .45s cubic-bezier(.4,1.6,.6,1); animation: place .3s cubic-bezier(.34,1.56,.64,1); }
+  .d::before, .d::after { content: ""; position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden; box-shadow: 0 3px 0 #0005; }
+  .d::before { background: radial-gradient(circle at 35% 30%, #555, #111); }
+  .d::after { background: radial-gradient(circle at 35% 30%, #fff, #d0d0d0); transform: rotateY(180deg); }
+  .d.w { transform: rotateY(180deg); }
+  .sq.last .d::before, .sq.last .d::after { box-shadow: 0 0 0 3px #ffd23f; }
+  @keyframes place { from { scale: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" data-l="1">Easy</button><button type="button" data-l="2">Medium</button><button type="button" data-l="3">Hard</button><span id="count">⚫ 2 · ⚪ 2</span><button type="button" id="new">↻ New</button></div>
+  <div id="status">You are ⚫ — tap a glowing dot</div>
+  <div id="board"></div>
+  <div style="font-size:12px;opacity:.7">Keyboard: arrows move, Space places</div>
+</div>
+<script>
+(() => {
+  const N = 8, DIRS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+  const W8 = [[100, -20, 10, 5, 5, 10, -20, 100], [-20, -50, -2, -2, -2, -2, -50, -20], [10, -2, 1, 1, 1, 1, -2, 10], [5, -2, 1, 0, 0, 1, -2, 5], [5, -2, 1, 0, 0, 1, -2, 5], [10, -2, 1, 1, 1, 1, -2, 10], [-20, -50, -2, -2, -2, -2, -50, -20], [100, -20, 10, 5, 5, 10, -20, 100]];
+  const boardEl = document.getElementById("board"), statusEl = document.getElementById("status");
+  let b, turn, level = 2, sqs = [], discs = [], cur = 19, busy = false, lastMove = -1, kbd = false;
+  try { level = +localStorage.getItem("flip-level") || 2; } catch (e) {}
+  function flipsFor(g, i, who) {
+    if (g[i]) return [];
+    const r = Math.floor(i / N), c = i % N, out = [];
+    for (const [dr, dc] of DIRS) {
+      const line = []; let rr = r + dr, cc = c + dc;
+      while (rr >= 0 && rr < N && cc >= 0 && cc < N && g[rr * N + cc] === 3 - who) { line.push(rr * N + cc); rr += dr; cc += dc; }
+      if (line.length && rr >= 0 && rr < N && cc >= 0 && cc < N && g[rr * N + cc] === who) out.push(...line);
+    }
+    return out;
+  }
+  const moves = (g, who) => { const m = []; for (let i = 0; i < 64; i++) if (flipsFor(g, i, who).length) m.push(i); return m; };
+  function build() {
+    const cs = Math.floor(Math.min((innerWidth - 40) / N, (innerHeight - 150) / N, 64));
+    boardEl.style.setProperty("--c", cs + "px");
+    if (sqs.length) return;
+    for (let i = 0; i < 64; i++) { const s = document.createElement("div"); s.className = "sq"; s.addEventListener("click", () => { kbd = false; play(i); }); boardEl.appendChild(s); sqs.push(s); discs.push(null); }
+  }
+  function newGame() {
+    b = new Array(64).fill(0); b[27] = b[36] = 2; b[28] = b[35] = 1; turn = 1; busy = false; lastMove = -1;
+    discs.forEach((d, i) => { if (d) d.remove(); discs[i] = null; });
+    document.querySelectorAll("[data-l]").forEach((e) => e.classList.toggle("on", +e.dataset.l === level));
+    render(); statusEl.textContent = "You are ⚫ — tap a glowing dot";
+  }
+  function render() {
+    const legal = turn === 1 && !busy ? new Set(moves(b, 1)) : new Set();
+    for (let i = 0; i < 64; i++) {
+      if (b[i] && !discs[i]) { const d = document.createElement("div"); d.className = "d" + (b[i] === 2 ? " w" : ""); sqs[i].appendChild(d); discs[i] = d; }
+      if (discs[i]) discs[i].classList.toggle("w", b[i] === 2);
+      sqs[i].classList.toggle("hint", legal.has(i)); sqs[i].classList.toggle("cur", kbd && i === cur); sqs[i].classList.toggle("last", i === lastMove);
+    }
+    const bl = b.filter((v) => v === 1).length, wh = b.filter((v) => v === 2).length;
+    document.getElementById("count").textContent = `⚫ ${bl} · ⚪ ${wh}`;
+  }
+  function apply(i, who) {
+    const f = flipsFor(b, i, who); b[i] = who; lastMove = i; render();
+    f.sort((p, q) => Math.hypot(Math.floor(p / N) - Math.floor(i / N), p % N - i % N) - Math.hypot(Math.floor(q / N) - Math.floor(i / N), q % N - i % N));
+    f.forEach((j, k) => setTimeout(() => { b[j] = who; render(); }, 90 + k * 70));
+    return 90 + f.length * 70 + 300;
+  }
+  function play(i) {
+    if (busy || turn !== 1 || !flipsFor(b, i, 1).length) return;
+    busy = true; const wait = apply(i, 1);
+    setTimeout(() => { turn = 2; afterMove(); }, wait);
+  }
+  function afterMove() {
+    const my = moves(b, 1), cpu = moves(b, 2);
+    if (!my.length && !cpu.length) return end();
+    if (turn === 2) {
+      if (!cpu.length) { turn = 1; busy = false; statusEl.textContent = "Computer has no moves — your turn again!"; return render(); }
+      statusEl.textContent = "Computer is thinking…"; render();
+      setTimeout(() => { const m = choose(); const wait = apply(m, 2); setTimeout(() => { turn = 1; afterMove(); }, wait); }, 450);
+    } else {
+      if (!my.length) { statusEl.textContent = "You have no moves — computer plays again"; turn = 2; return setTimeout(afterMove, 900); }
+      busy = false; statusEl.textContent = "Your turn ⚫"; render();
+    }
+  }
+  function score(g) {
+    let s = 0; for (let i = 0; i < 64; i++) if (g[i]) s += (g[i] === 2 ? 1 : -1) * W8[Math.floor(i / N)][i % N];
+    return s + (moves(g, 2).length - moves(g, 1).length) * 4;
+  }
+  function search(g, depth, who, a, bt) {
+    const ms = moves(g, who);
+    if (!depth || !ms.length) return score(g);
+    let best = who === 2 ? -Infinity : Infinity;
+    for (const m of ms) {
+      const ng = g.slice(); flipsFor(ng, m, who).forEach((j) => (ng[j] = who)); ng[m] = who;
+      const v = search(ng, depth - 1, 3 - who, a, bt);
+      if (who === 2) { best = Math.max(best, v); a = Math.max(a, v); } else { best = Math.min(best, v); bt = Math.min(bt, v); }
+      if (bt <= a) break;
+    }
+    return best;
+  }
+  function choose() {
+    const ms = moves(b, 2);
+    if (level === 1) return Math.random() < 0.6 ? ms[Math.floor(Math.random() * ms.length)] : ms.sort((p, q) => flipsFor(b, q, 2).length - flipsFor(b, p, 2).length)[0];
+    const depth = level === 2 ? 1 : 3; let best = -Infinity, pick = ms[0];
+    for (const m of ms) { const ng = b.slice(); flipsFor(ng, m, 2).forEach((j) => (ng[j] = 2)); ng[m] = 2; const v = search(ng, depth, 1, -Infinity, Infinity) + Math.random(); if (v > best) { best = v; pick = m; } }
+    return pick;
+  }
+  function end() {
+    busy = true; const bl = b.filter((v) => v === 1).length, wh = b.filter((v) => v === 2).length;
+    statusEl.textContent = bl > wh ? `🏆 You win ${bl}–${wh}! Tap ↻ for a rematch` : wh > bl ? `🤖 Computer wins ${wh}–${bl}` : `🤝 Draw ${bl}–${wh}`; render();
+  }
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); kbd = true; const r = Math.max(0, Math.min(7, Math.floor(cur / N) + m[0])), c = Math.max(0, Math.min(7, cur % N + m[1])); cur = r * N + c; render(); }
+    if (k === " " || k === "enter") { e.preventDefault(); kbd = true; play(cur); }
+  });
+  document.querySelectorAll("[data-l]").forEach((e) => (e.onclick = () => { level = +e.dataset.l; try { localStorage.setItem("flip-level", level); } catch (er) {} newGame(); }));
+  document.getElementById("new").onclick = newGame;
+  addEventListener("resize", build);
+  build(); newGame();
+})();
+</script>
+</body>
+</html>

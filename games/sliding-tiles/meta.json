@@ -1,0 +1,21 @@
+{
+  "title": "Sliding Tiles",
+  "category": "Puzzle",
+  "description": "The classic sliding puzzle. Slide the numbered tiles into order using the one empty space. Choose 3×3, 4×4 or 5×5 and beat your best number of moves.",
+  "instructions": [
+    "Click or tap a tile next to the empty space to slide it.",
+    "Keyboard: arrow keys or WASD slide a tile into the gap.",
+    "Put the numbers in order from 1 at the top-left.",
+    "Change the board size with the size button."
+  ],
+  "tags": [
+    "sliding",
+    "numbers",
+    "classic",
+    "brain"
+  ],
+  "added": "2026-09-29",
+  "popularity": 70,
+  "license": "Original",
+  "source": "Original work"
+}

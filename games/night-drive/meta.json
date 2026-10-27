@@ -1,0 +1,21 @@
+{
+  "title": "Night Drive",
+  "category": "Racing",
+  "description": "Cruise down a glowing neon highway at night. Overtake slower cars, pass checkpoints to earn more time and keep the speedometer climbing.",
+  "instructions": [
+    "Up / W to accelerate, Down / S to brake, Left and Right to steer.",
+    "On touch screens, use the on-screen pedals and steering.",
+    "Reach each checkpoint before the timer hits zero.",
+    "Hitting cars or leaving the road slows you down."
+  ],
+  "tags": [
+    "driving",
+    "neon",
+    "retro",
+    "time"
+  ],
+  "added": "2026-10-21",
+  "popularity": 81,
+  "license": "Original",
+  "source": "Original work"
+}

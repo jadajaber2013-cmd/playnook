@@ -1,0 +1,21 @@
+{
+  "title": "Fruit Catcher",
+  "category": "Arcade",
+  "description": "Fruit is raining from the trees! Slide your basket to catch apples, bananas and berries, but dodge the rotten ones. Catch combos to multiply your score.",
+  "instructions": [
+    "Move the basket with the arrow keys or A and D.",
+    "On touch screens, drag your finger left and right.",
+    "Catch fruit to score. Avoid the brown rotten fruit.",
+    "You have 3 hearts. Press P to pause."
+  ],
+  "tags": [
+    "catch",
+    "fruit",
+    "basket",
+    "casual"
+  ],
+  "added": "2026-09-15",
+  "popularity": 78,
+  "license": "Original",
+  "source": "Original work"
+}

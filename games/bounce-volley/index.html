@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Bounce Volley</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffe8a3; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; margin: 0 auto; }
+  .tc { position: fixed; bottom: 14px; display: none; gap: 12px; }
+  .tc button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff; background: #0003; color: #fff; font-size: 26px; touch-action: none; }
+  .tc button.on { background: #fff6; }
+  #tl { left: 14px; } #tr { right: 14px; }
+  @media (pointer: coarse) { .tc { display: flex; } }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tc" id="tl"><button data-k="left" aria-label="Move left">◀</button><button data-k="right" aria-label="Move right">▶</button></div>
+<div class="tc" id="tr"><button data-k="up" aria-label="Jump">⤒</button></div>
+<div id="msg"><div>🏐 Bounce Volley<small>Move with ← → / A D, jump with ↑ / W / Space.<br>Bounce the ball over the net. First to 7 wins!<br>Press Space or tap to serve</small></div></div>
+<script>
+(() => {
+  const VW = 800, VH = 450, GROUND = 400, NET_H = 90, PR = 46, BR = 14, G = 1300, WIN = 7;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let scale, me, cpu, ball, sMe, sCpu, state = "menu", last = 0, keys = {}, pause = 0, fx = [], t = 0, banner = null;
+  function resize() { scale = Math.min(innerWidth / VW, innerHeight / VH); const d = Math.min(devicePixelRatio || 1, 2); c.style.width = VW * scale + "px"; c.style.height = VH * scale + "px"; c.style.marginTop = Math.max(0, (innerHeight - VH * scale) / 2 - (matchMedia("(pointer: coarse)").matches ? 40 : 0)) + "px"; c.width = VW * scale * d; c.height = VH * scale * d; x.setTransform(scale * d, 0, 0, scale * d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function serve(toMe) { me.x = 200; cpu.x = 600; me.y = cpu.y = GROUND; me.vy = cpu.vy = 0; ball = { x: toMe ? 200 : 600, y: 120, vx: 0, vy: 0 }; pause = 0.9; }
+  function start() { me = { x: 200, y: GROUND, vx: 0, vy: 0, col: "#ff4f7b" }; cpu = { x: 600, y: GROUND, vx: 0, vy: 0, col: "#4dabf7" }; sMe = 0; sCpu = 0; serve(true); state = "play"; msg.hidden = true; }
+  function movePlayer(p, dir, jump, minX, maxX, dt) {
+    p.vx = dir * 420; p.x = Math.max(minX + PR, Math.min(maxX - PR, p.x + p.vx * dt));
+    if (jump && p.y >= GROUND) p.vy = -620;
+    p.vy += G * dt; p.y = Math.min(GROUND, p.y + p.vy * dt); if (p.y >= GROUND) p.vy = 0;
+  }
+  function hitPlayer(p) {
+    const dx = ball.x - p.x, dy = ball.y - p.y, d = Math.hypot(dx, dy);
+    if (d < PR + BR && dy < 8) {
+      const nx = dx / d, ny = dy / d, rel = (ball.vx - p.vx) * nx + (ball.vy - p.vy) * ny;
+      ball.x = p.x + nx * (PR + BR); ball.y = p.y + ny * (PR + BR);
+      if (rel < 0) { ball.vx -= 2 * rel * nx; ball.vy -= 2 * rel * ny; ball.vx += p.vx * 0.3; ball.vy += Math.min(0, p.vy) * 0.3; }
+      const sp = Math.hypot(ball.vx, ball.vy); if (sp > 900) { ball.vx *= 900 / sp; ball.vy *= 900 / sp; }
+      for (let i = 0; i < 6; i++) fx.push({ x: ball.x, y: ball.y, vx: (Math.random() - 0.5) * 200, vy: -Math.random() * 200, l: 0.4, col: "#fff" });
+    }
+  }
+  function point(meWon) {
+    if (meWon) sMe++; else sCpu++;
+    banner = { t: meWon ? "Point! 🎉" : "CPU point", l: 1 };
+    for (let i = 0; i < 20; i++) fx.push({ x: ball.x, y: GROUND, vx: (Math.random() - 0.5) * 300, vy: -Math.random() * 300, l: 0.7, col: "#e6c271" });
+    if (sMe >= WIN || sCpu >= WIN) { state = "over"; return show(sMe > sCpu ? "🏆 You win!" : "🤖 Computer wins", `${sMe} – ${sCpu}<br>Press Space or tap to play again`); }
+    serve(!meWon ? true : false);
+  }
+  function update(dt) {
+    t += dt; if (banner) { banner.l -= dt; if (banner.l <= 0) banner = null; }
+    movePlayer(me, (keys.right ? 1 : 0) - (keys.left ? 1 : 0), keys.up, 0, VW / 2 - 6, dt);
+    // computer: predict where the ball lands on its side
+    let px = ball.x, py = ball.y, vx = ball.vx, vy = ball.vy;
+    for (let i = 0; i < 120 && py < GROUND - PR * 0.6; i++) { vy += G * 0.55 / 60; px += vx / 60; py += vy / 60; if (px < BR || px > VW - BR) vx *= -1; }
+    const targetX = px > VW / 2 ? px + 18 : 600;
+    const dir = Math.abs(targetX - cpu.x) > 12 ? Math.sign(targetX - cpu.x) : 0;
+    const jump = ball.x > VW / 2 && Math.abs(ball.x - cpu.x) < 70 && ball.y < GROUND - 120 && ball.y > GROUND - 260 && ball.vy > 0;
+    movePlayer(cpu, dir * (0.82 + Math.min(sMe, 5) * 0.03), jump, VW / 2 + 6, VW, dt);
+    if (pause > 0) { pause -= dt; return; }
+    const steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const sdt = dt / steps;
+      ball.vy += G * 0.55 * sdt; ball.x += ball.vx * sdt; ball.y += ball.vy * sdt;
+      if (ball.x < BR) { ball.x = BR; ball.vx = Math.abs(ball.vx); } if (ball.x > VW - BR) { ball.x = VW - BR; ball.vx = -Math.abs(ball.vx); }
+      if (ball.y < BR) { ball.y = BR; ball.vy = Math.abs(ball.vy); }
+      // net
+      if (Math.abs(ball.x - VW / 2) < 6 + BR && ball.y > GROUND - NET_H) { if (ball.y < GROUND - NET_H + 10 && ball.vy > 0) { ball.vy = -Math.abs(ball.vy) * 0.8; } else { ball.vx = (ball.x < VW / 2 ? -1 : 1) * Math.abs(ball.vx) * 0.8; ball.x = VW / 2 + (ball.x < VW / 2 ? -1 : 1) * (6 + BR); } }
+      hitPlayer(me); hitPlayer(cpu);
+      if (ball.y > GROUND - BR) { return point(ball.x > VW / 2); }
+    }
+  }
+  function blob(p, lookAt) {
+    x.fillStyle = "#0002"; x.beginPath(); x.ellipse(p.x, GROUND + 4, PR * (0.6 + 0.4 * (1 - (GROUND - p.y) / 200)), 7, 0, 0, 7); x.fill();
+    const sq = p.y >= GROUND ? 1 + Math.sin(t * 6) * 0.03 : 1.06;
+    x.save(); x.translate(p.x, p.y); x.scale(1 / sq, sq);
+    x.fillStyle = p.col; x.beginPath(); x.arc(0, 0, PR, Math.PI, 0); x.closePath(); x.fill();
+    x.fillStyle = "#ffffff33"; x.beginPath(); x.ellipse(-PR * 0.35, -PR * 0.55, PR * 0.25, PR * 0.12, -0.5, 0, 7); x.fill();
+    const ex = (p === me ? 1 : -1) * PR * 0.4, a = Math.atan2(lookAt.y - (p.y - PR * 0.5), lookAt.x - (p.x + ex));
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(ex, -PR * 0.5, 10, 0, 7); x.fill();
+    x.fillStyle = "#111"; x.beginPath(); x.arc(ex + Math.cos(a) * 4, -PR * 0.5 + Math.sin(a) * 4, 5, 0, 7); x.fill();
+    x.restore();
+  }
+  function draw(dt) {
+    const sky = x.createLinearGradient(0, 0, 0, GROUND); sky.addColorStop(0, "#4dabf7"); sky.addColorStop(1, "#d0ebff"); x.fillStyle = sky; x.fillRect(0, 0, VW, VH);
+    x.fillStyle = "#fff3b0"; x.beginPath(); x.arc(680, 70, 36, 0, 7); x.fill();
+    x.fillStyle = "#1c7ed6"; x.fillRect(0, GROUND - 30, VW, 30); x.fillStyle = "#4dabf7"; for (let i = 0; i < VW; i += 40) { x.beginPath(); x.arc(i + (t * 20) % 40, GROUND - 30, 20, Math.PI, 0); x.fill(); }
+    x.fillStyle = "#f2d38a"; x.fillRect(0, GROUND, VW, VH); x.fillStyle = "#e6c271"; for (let i = 0; i < 60; i++) x.fillRect((i * 97) % VW, GROUND + 6 + (i * 13) % 40, 4, 3);
+    x.fillStyle = "#555"; x.fillRect(VW / 2 - 3, GROUND - NET_H, 6, NET_H);
+    x.strokeStyle = "#fff"; x.lineWidth = 1; for (let i = 0; i < 9; i++) { x.beginPath(); x.moveTo(VW / 2 - 6, GROUND - NET_H + i * 10); x.lineTo(VW / 2 + 6, GROUND - NET_H + i * 10); x.stroke(); }
+    x.fillStyle = "#fff"; x.fillRect(VW / 2 - 8, GROUND - NET_H - 6, 16, 8);
+    x.fillStyle = "#ffffff99"; x.font = "900 64px system-ui"; x.textAlign = "center"; x.fillText(sMe ?? 0, VW * 0.25, 90); x.fillText(sCpu ?? 0, VW * 0.75, 90);
+    if (!me) return;
+    blob(me, ball); blob(cpu, ball);
+    x.fillStyle = "#0002"; x.beginPath(); x.ellipse(ball.x, GROUND + 4, BR, 4, 0, 0, 7); x.fill();
+    x.save(); x.translate(ball.x, ball.y); x.rotate(ball.x / 20);
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(0, 0, BR, 0, 7); x.fill();
+    x.strokeStyle = "#ffd23f"; x.lineWidth = 3; x.beginPath(); x.arc(0, 0, BR - 2, 0, 2); x.stroke(); x.strokeStyle = "#4dabf7"; x.beginPath(); x.arc(0, 0, BR - 2, 2.1, 4.1); x.stroke(); x.strokeStyle = "#ff4f7b"; x.beginPath(); x.arc(0, 0, BR - 2, 4.2, 6.2); x.stroke();
+    x.restore();
+    if (ball.y < 0) { x.fillStyle = "#fff"; x.beginPath(); x.moveTo(ball.x, 4); x.lineTo(ball.x - 8, 16); x.lineTo(ball.x + 8, 16); x.fill(); }
+    for (const f of fx) { f.l -= dt; f.vy += 700 * dt; f.x += f.vx * dt; f.y += f.vy * dt; x.globalAlpha = Math.max(0, f.l * 2); x.fillStyle = f.col; x.fillRect(f.x, f.y, 4, 4); }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.l > 0);
+    if (banner) { x.globalAlpha = Math.min(1, banner.l * 2); x.fillStyle = "#fff"; x.strokeStyle = "#0006"; x.lineWidth = 6; x.font = "900 44px system-ui"; x.strokeText(banner.t, VW / 2, 200); x.fillText(banner.t, VW / 2, 200); x.globalAlpha = 1; }
+  }
+  function loop(now) { const dt = Math.min(0.03, (now - last) / 1000 || 0.016); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right", arrowup: "up", w: "up", " ": "up" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if ((k === " " || k === "enter") && state !== "play") { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  const held = new Map();
+  document.querySelectorAll(".tc button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); if (state !== "play") return start(); b.setPointerCapture(e.pointerId); held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
+    const up = (e) => { held.delete(e.pointerId); keys[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", keys[b.dataset.k]); };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+  });
+  msg.addEventListener("pointerdown", () => { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

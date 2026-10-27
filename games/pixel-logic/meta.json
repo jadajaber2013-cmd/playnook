@@ -1,0 +1,21 @@
+{
+  "title": "Pixel Logic",
+  "category": "Puzzle",
+  "description": "Use the number clues next to each row and column to colour in the right squares and reveal a hidden pixel picture.",
+  "instructions": [
+    "Click or tap a square to fill it. Right-click or use X mode to mark it empty.",
+    "Keyboard: arrows move, Space fills, X marks.",
+    "The numbers tell you the lengths of filled blocks in that row or column.",
+    "Finish the picture to win."
+  ],
+  "tags": [
+    "nonogram",
+    "picture",
+    "logic",
+    "pixel"
+  ],
+  "added": "2026-09-03",
+  "popularity": 62,
+  "license": "Original",
+  "source": "Original work"
+}

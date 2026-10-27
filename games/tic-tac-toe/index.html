@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tic-Tac-Toe</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(135deg, #3a86ff, #6a00f4); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 10px; box-sizing: border-box; }
+  #score { display: flex; gap: 8px; font-weight: 800; }
+  #score span { background: #ffffff22; padding: 6px 12px; border-radius: 999px; }
+  #status { font-size: 20px; font-weight: 800; min-height: 1.4em; text-align: center; }
+  #board { display: grid; grid-template-columns: repeat(3, var(--s)); gap: 8px; }
+  .cell { width: var(--s); height: var(--s); border: 0; border-radius: 16px; background: #ffffff1f; color: #fff; font-size: calc(var(--s) * .6); font-weight: 900; cursor: pointer; display: grid; place-items: center; transition: background .15s, transform .1s; padding: 0; position: relative; }
+  .cell:hover:not([aria-disabled=true]) { background: #ffffff33; }
+  .cell:focus-visible { outline: 4px solid #ffd23f; }
+  .cell[aria-disabled=true] { cursor: default; }
+  .cell.x { color: #ff7a8c; }
+  .cell.o { color: #ffd23f; }
+  .cell.win { background: #ffffff55; transform: scale(1.04); }
+  .cell .n { position: absolute; top: 6px; left: 8px; font-size: 12px; opacity: .35; font-weight: 600; }
+  #controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  #controls button { border: 0; border-radius: 999px; padding: 9px 14px; background: #fff; color: #3a2a8a; font: inherit; font-weight: 800; cursor: pointer; }
+  #controls button.on { background: #ffd23f; }
+  @media (pointer: coarse) { .cell .n { display: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="score"><span>You (X): <b id="sx">0</b></span><span>Draws: <b id="sd">0</b></span><span>CPU (O): <b id="so">0</b></span></div>
+  <div id="status" aria-live="polite">Your turn!</div>
+  <div id="board" role="grid" aria-label="Tic-tac-toe board"></div>
+  <div id="controls">
+    <button type="button" data-level="easy">Easy</button>
+    <button type="button" data-level="medium" class="on">Medium</button>
+    <button type="button" data-level="hard">Hard</button>
+    <button type="button" id="new">↻ New round</button>
+  </div>
+</div>
+<script>
+(() => {
+  const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  const boardEl = document.getElementById("board"), statusEl = document.getElementById("status");
+  const score = JSON.parse(localStorage.getItem("ttt-score") || '{"x":0,"o":0,"d":0}');
+  let level = localStorage.getItem("ttt-level") || "medium";
+  let board, over, playerStarts = true, cells = [];
+
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement("button");
+    b.className = "cell"; b.type = "button";
+    b.addEventListener("click", () => play(i));
+    boardEl.appendChild(b);
+    cells.push(b);
+  }
+
+  function size() { boardEl.style.setProperty("--s", Math.floor(Math.min((innerWidth - 40) / 3, (innerHeight - 190) / 3, 140)) + "px"); }
+
+  function winner(b) {
+    for (const l of LINES) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return { p: b[l[0]], line: l };
+    return b.every(Boolean) ? { p: "d" } : null;
+  }
+
+  // Minimax: perfect play. Returns score from O's point of view.
+  function minimax(b, turn, depth) {
+    const w = winner(b);
+    if (w) return w.p === "o" ? 10 - depth : w.p === "x" ? depth - 10 : 0;
+    let best = turn === "o" ? -Infinity : Infinity;
+    for (let i = 0; i < 9; i++) if (!b[i]) {
+      b[i] = turn;
+      const s = minimax(b, turn === "o" ? "x" : "o", depth + 1);
+      b[i] = null;
+      best = turn === "o" ? Math.max(best, s) : Math.min(best, s);
+    }
+    return best;
+  }
+
+  function cpuMove() {
+    const free = board.map((v, i) => (v ? null : i)).filter((v) => v !== null);
+    const mistake = { easy: 0.75, medium: 0.3, hard: 0 }[level];
+    if (Math.random() < mistake) return free[Math.floor(Math.random() * free.length)];
+    let bestScore = -Infinity, moves = [];
+    for (const i of free) {
+      board[i] = "o";
+      const s = minimax(board, "x", 1);
+      board[i] = null;
+      if (s > bestScore) { bestScore = s; moves = [i]; } else if (s === bestScore) moves.push(i);
+    }
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  function render() {
+    board.forEach((v, i) => {
+      const c = cells[i];
+      c.className = "cell" + (v ? " " + v : "");
+      c.innerHTML = (v ? v.toUpperCase() : "") + `<span class="n">${i + 1}</span>`;
+      c.setAttribute("aria-disabled", !!v || over);
+      c.setAttribute("aria-label", `Square ${i + 1}: ${v ? v.toUpperCase() : "empty"}`);
+    });
+    document.getElementById("sx").textContent = score.x;
+    document.getElementById("so").textContent = score.o;
+    document.getElementById("sd").textContent = score.d;
+  }
+
+  function check() {
+    const w = winner(board);
+    if (!w) return false;
+    over = true;
+    score[w.p]++;
+    localStorage.setItem("ttt-score", JSON.stringify(score));
+    statusEl.textContent = w.p === "x" ? "🎉 You win!" : w.p === "o" ? "🤖 Computer wins!" : "🤝 It's a draw!";
+    statusEl.textContent += " Press N or tap New round.";
+    render();
+    if (w.line) w.line.forEach((i) => cells[i].classList.add("win"));
+    return true;
+  }
+
+  function cpuTurn() {
+    statusEl.textContent = "Computer is thinking…";
+    boardEl.style.pointerEvents = "none";
+    setTimeout(() => {
+      boardEl.style.pointerEvents = "";
+      board[cpuMove()] = "o";
+      if (!check()) { statusEl.textContent = "Your turn!"; render(); }
+    }, 350);
+  }
+
+  function play(i) {
+    if (over || board[i] || statusEl.textContent.startsWith("Computer")) return;
+    board[i] = "x";
+    render();
+    if (!check()) cpuTurn();
+  }
+
+  function newRound() {
+    board = Array(9).fill(null); over = false;
+    render();
+    playerStarts = !playerStarts;
+    if (playerStarts) { statusEl.textContent = "Your turn!"; } else cpuTurn();
+  }
+
+  document.querySelectorAll("[data-level]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.level === level);
+    b.addEventListener("click", () => {
+      level = b.dataset.level; localStorage.setItem("ttt-level", level);
+      document.querySelectorAll("[data-level]").forEach((x) => x.classList.toggle("on", x === b));
+      playerStarts = false; newRound();
+    });
+  });
+  document.getElementById("new").addEventListener("click", newRound);
+
+  // Keyboard: keys 1-9 pick a square (like a phone keypad, top-left = 1), arrows move focus.
+  addEventListener("keydown", (e) => {
+    if (/^[1-9]$/.test(e.key)) play(+e.key - 1);
+    else if (e.key.toLowerCase() === "n") newRound();
+    else if (e.key.startsWith("Arrow")) {
+      e.preventDefault();
+      const cur = cells.indexOf(document.activeElement);
+      if (cur < 0) return cells[4].focus();
+      const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[e.key];
+      const n = cur + d;
+      if (n >= 0 && n < 9 && !(d === -1 && cur % 3 === 0) && !(d === 1 && cur % 3 === 2)) cells[n].focus();
+    }
+  });
+
+  addEventListener("resize", size);
+  size();
+  playerStarts = false; newRound();
+})();
+</script>
+</body>
+</html>

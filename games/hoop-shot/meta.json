@@ -1,0 +1,21 @@
+{
+  "title": "Hoop Shot",
+  "category": "Sports",
+  "description": "Shoot hoops against the clock. Flick the basketball towards the net, sink swishes for bonus points and watch out — the hoop starts to move!",
+  "instructions": [
+    "Drag back and release to throw the ball (like a slingshot).",
+    "Keyboard: Left and Right aim, hold Space for power, release to shoot.",
+    "Score as many baskets as you can in 60 seconds.",
+    "Clean swishes are worth extra."
+  ],
+  "tags": [
+    "basketball",
+    "throw",
+    "hoops",
+    "timer"
+  ],
+  "added": "2026-10-18",
+  "popularity": 87,
+  "license": "Original",
+  "source": "Original work"
+}

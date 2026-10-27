@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sudoku</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #eef2ff, #fde7f3); color: #1c1638; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; font-weight: 800; }
+  #top button, #top span { border: 0; border-radius: 999px; padding: 7px 12px; background: #fff; font: inherit; font-weight: 800; color: #1c1638; box-shadow: 0 2px 6px #0001; }
+  #top button { cursor: pointer; } #top button.on { background: #7c5cff; color: #fff; }
+  #grid { display: grid; grid-template-columns: repeat(9, var(--c)); background: #1c1638; gap: 1px; border: 3px solid #1c1638; border-radius: 10px; overflow: hidden; box-shadow: 0 16px 40px #3a2a8a33; }
+  .cell { width: var(--c); height: var(--c); background: #fff; display: grid; place-items: center; font-size: calc(var(--c) * .55); font-weight: 700; color: #3a5bd9; cursor: pointer; position: relative; transition: background .15s; }
+  .cell.given { color: #1c1638; font-weight: 900; }
+  .cell { box-sizing: border-box; } .cell.br { border-right: 3px solid #1c1638; } .cell.bb { border-bottom: 3px solid #1c1638; }
+  .cell.hl { background: #eeeaff; } .cell.same { background: #d9d0ff; } .cell.sel { background: #b8a8ff; }
+  .cell.bad { color: #e03131; background: #ffe3e3; }
+  .cell.pop { animation: pop .35s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes pop { 40% { transform: scale(1.25); } }
+  .cell.wave { animation: wave .6s ease; }
+  @keyframes wave { 50% { background: #b2f2bb; transform: scale(1.08); } }
+  .notes { position: absolute; inset: 2px; display: grid; grid-template-columns: repeat(3, 1fr); font-size: calc(var(--c) * .22); color: #8a84b0; font-weight: 700; }
+  .notes span { display: grid; place-items: center; }
+  #pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; width: calc(var(--c) * 9 + 14px); }
+  #pad button { border: 0; border-radius: 10px; padding: 0; height: calc(var(--c) * 1.05); background: #fff; font: inherit; font-size: calc(var(--c) * .5); font-weight: 900; color: #3a5bd9; cursor: pointer; box-shadow: 0 3px 0 #d0c8ff; }
+  #pad button:active { transform: translateY(2px); box-shadow: none; }
+  #pad button.done { opacity: .3; }
+  #tools { display: flex; gap: 6px; }
+  #tools button { border: 0; border-radius: 999px; padding: 8px 14px; background: #fff; font: inherit; font-weight: 800; cursor: pointer; box-shadow: 0 2px 6px #0001; }
+  #tools button.on { background: #ffd23f; }
+  #win { position: fixed; inset: 0; display: grid; place-items: center; background: #1c163899; text-align: center; font-size: 30px; font-weight: 900; color: #fff; }
+  #win[hidden] { display: none; }
+  #win small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #win button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"><button type="button" data-d="easy">Easy</button><button type="button" data-d="medium">Medium</button><button type="button" data-d="hard">Hard</button><span id="time">⏱ 0:00</span><span id="mist">❌ 0</span></div>
+  <div id="grid" role="grid" aria-label="Sudoku grid"></div>
+  <div id="pad"></div>
+  <div id="tools"><button type="button" id="notes">✏️ Notes (N)</button><button type="button" id="erase">⌫ Erase</button><button type="button" id="hint">💡 Hint</button></div>
+</div>
+<div id="win" hidden><div>🎉 Solved!<small id="winText"></small><button type="button" id="again">New puzzle</button></div></div>
+<script>
+(() => {
+  const HOLES = { easy: 36, medium: 46, hard: 54 };
+  const gridEl = document.getElementById("grid"), padEl = document.getElementById("pad");
+  let diff = "easy", sol, puz, val, notes, sel = 40, notesMode = false, mistakes = 0, startT, timer, cells = [];
+  try { diff = localStorage.getItem("sudoku-diff") || "easy"; } catch (e) {}
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const ok = (g, i, n) => { const r = Math.floor(i / 9), c = i % 9, br = r - r % 3, bc = c - c % 3; for (let k = 0; k < 9; k++) if (g[r * 9 + k] === n || g[k * 9 + c] === n || g[(br + Math.floor(k / 3)) * 9 + bc + k % 3] === n) return false; return true; };
+  function fill(g, i = 0) { if (i === 81) return true; if (g[i]) return fill(g, i + 1); for (const n of shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) if (ok(g, i, n)) { g[i] = n; if (fill(g, i + 1)) return true; } g[i] = 0; return false; }
+  function count(g, limit = 2) {
+    let best = -1, bestN = 10;
+    for (let i = 0; i < 81; i++) if (!g[i]) { let n = 0; for (let v = 1; v <= 9; v++) if (ok(g, i, v)) n++; if (n < bestN) { bestN = n; best = i; } if (!n) return 0; }
+    if (best < 0) return 1;
+    let total = 0;
+    for (let v = 1; v <= 9 && total < limit; v++) if (ok(g, best, v)) { g[best] = v; total += count(g, limit - total); g[best] = 0; }
+    return total;
+  }
+  function generate() {
+    sol = new Array(81).fill(0); fill(sol);
+    puz = sol.slice(); let holes = 0;
+    for (const i of shuffle([...Array(81).keys()])) {
+      if (holes >= HOLES[diff]) break;
+      const keep = puz[i]; puz[i] = 0;
+      if (count(puz.slice()) !== 1) puz[i] = keep; else holes++;
+    }
+  }
+  function newGame() {
+    document.querySelectorAll("#top [data-d]").forEach((b) => b.classList.toggle("on", b.dataset.d === diff));
+    generate(); val = puz.slice(); notes = Array.from({ length: 81 }, () => new Set()); mistakes = 0; sel = puz.indexOf(0);
+    clearInterval(timer); startT = Date.now(); timer = setInterval(tick, 1000); tick();
+    gridEl.innerHTML = ""; cells = [];
+    for (let i = 0; i < 81; i++) {
+      const d = document.createElement("div"); d.className = "cell" + (i % 9 === 2 || i % 9 === 5 ? " br" : "") + (Math.floor(i / 9) === 2 || Math.floor(i / 9) === 5 ? " bb" : "");
+      d.setAttribute("role", "gridcell");
+      d.addEventListener("pointerdown", () => { sel = i; render(); });
+      gridEl.appendChild(d); cells.push(d);
+    }
+    document.getElementById("win").hidden = true; render();
+  }
+  function tick() { const s = Math.floor((Date.now() - startT) / 1000); document.getElementById("time").textContent = `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+  function render() {
+    const sr = Math.floor(sel / 9), sc = sel % 9, sv = val[sel];
+    cells.forEach((d, i) => {
+      const r = Math.floor(i / 9), c = i % 9, given = puz[i] !== 0;
+      d.classList.toggle("given", given);
+      d.classList.toggle("sel", i === sel);
+      d.classList.toggle("hl", i !== sel && (r === sr || c === sc || (Math.floor(r / 3) === Math.floor(sr / 3) && Math.floor(c / 3) === Math.floor(sc / 3))));
+      d.classList.toggle("same", i !== sel && sv && val[i] === sv);
+      d.classList.toggle("bad", !!val[i] && val[i] !== sol[i]);
+      if (val[i]) d.textContent = val[i];
+      else d.innerHTML = notes[i].size ? `<div class="notes">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<span>${notes[i].has(n) ? n : ""}</span>`).join("")}</div>` : "";
+    });
+    padEl.querySelectorAll("button").forEach((b) => b.classList.toggle("done", val.filter((v, i) => v === +b.dataset.n && v === sol[i]).length >= 9));
+    document.getElementById("mist").textContent = "❌ " + mistakes;
+    document.getElementById("notes").classList.toggle("on", notesMode);
+  }
+  function enter(n) {
+    if (puz[sel] || !document.getElementById("win").hidden) return;
+    if (notesMode && !val[sel]) { notes[sel].has(n) ? notes[sel].delete(n) : notes[sel].add(n); return render(); }
+    if (val[sel] === n) return;
+    val[sel] = n;
+    if (n !== sol[sel]) mistakes++;
+    else {
+      const r = Math.floor(sel / 9), c = sel % 9;
+      for (let k = 0; k < 9; k++) { notes[r * 9 + k].delete(n); notes[k * 9 + c].delete(n); }
+      cells[sel].classList.remove("pop"); void cells[sel].offsetWidth; cells[sel].classList.add("pop");
+    }
+    render();
+    if (val.every((v, i) => v === sol[i])) win();
+  }
+  function win() {
+    clearInterval(timer);
+    cells.forEach((d, i) => setTimeout(() => d.classList.add("wave"), (Math.floor(i / 9) + i % 9) * 40));
+    const s = Math.floor((Date.now() - startT) / 1000);
+    document.getElementById("winText").textContent = `${diff[0].toUpperCase() + diff.slice(1)} puzzle in ${Math.floor(s / 60)}m ${s % 60}s with ${mistakes} mistake${mistakes === 1 ? "" : "s"}.`;
+    setTimeout(() => (document.getElementById("win").hidden = false), 1200);
+  }
+  for (let n = 1; n <= 9; n++) { const b = document.createElement("button"); b.type = "button"; b.textContent = n; b.dataset.n = n; b.addEventListener("click", () => enter(n)); padEl.appendChild(b); }
+  function layout() { const cs = Math.floor(Math.min((innerWidth - 24) / 9, (innerHeight - 170) / 10.3, 58)); document.documentElement.style.setProperty("--c", cs + "px"); }
+  addEventListener("resize", layout);
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    const m = { arrowleft: -1, a: -1, arrowright: 1, d: 1, arrowup: -9, w: -9, arrowdown: 9, s: 9 }[k];
+    if (m !== undefined) { e.preventDefault(); const nx = sel + m; if (nx >= 0 && nx < 81 && !(Math.abs(m) === 1 && Math.floor(nx / 9) !== Math.floor(sel / 9))) sel = nx; render(); }
+    else if (/^[1-9]$/.test(k)) enter(+k);
+    else if (k === "backspace" || k === "delete" || k === "0") { if (!puz[sel]) { val[sel] = 0; notes[sel].clear(); render(); } }
+    else if (k === "n") { notesMode = !notesMode; render(); }
+  });
+  document.querySelectorAll("#top [data-d]").forEach((b) => b.addEventListener("click", () => { diff = b.dataset.d; try { localStorage.setItem("sudoku-diff", diff); } catch (e) {} newGame(); }));
+  document.getElementById("notes").addEventListener("click", () => { notesMode = !notesMode; render(); });
+  document.getElementById("erase").addEventListener("click", () => { if (!puz[sel]) { val[sel] = 0; notes[sel].clear(); render(); } });
+  document.getElementById("hint").addEventListener("click", () => { const empty = val.map((v, i) => (v !== sol[i] ? i : -1)).filter((i) => i >= 0); if (!empty.length) return; sel = empty.includes(sel) ? sel : empty[Math.floor(Math.random() * empty.length)]; const n = sol[sel]; notesMode = false; enter(n); });
+  document.getElementById("again").addEventListener("click", newGame);
+  layout(); newGame();
+})();
+</script>
+</body>
+</html>

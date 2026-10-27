@@ -1,0 +1,23 @@
+{
+  "title": "Number Merge",
+  "category": "Puzzle",
+  "description": "Slide the numbered tiles and merge matching numbers to make bigger ones. Can you build a 2048 tile? A simple, addictive sliding puzzle that is easy to learn and hard to master.",
+  "instructions": [
+    "Use the arrow keys or WASD to slide every tile in that direction.",
+    "On a phone or tablet, swipe up, down, left or right.",
+    "When two tiles with the same number touch, they merge into one.",
+    "A new tile appears after every move. Keep merging to reach 2048!",
+    "Press N to start a new game."
+  ],
+  "tags": [
+    "2048",
+    "numbers",
+    "merge",
+    "sliding puzzle",
+    "brain"
+  ],
+  "added": "2026-10-25",
+  "popularity": 90,
+  "license": "Original",
+  "source": "Original work"
+}

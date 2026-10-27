@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Doodle Pad</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #fff4e6; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #app { height: 100%; display: flex; flex-direction: column; }
+  #bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; padding: 8px; background: #fff; box-shadow: 0 2px 10px #0001; z-index: 1; }
+  .sw { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px #ddd; cursor: pointer; padding: 0; transition: transform .15s cubic-bezier(.34,1.56,.64,1); }
+  .sw.on { transform: scale(1.25); box-shadow: 0 0 0 3px #1c1638; }
+  .tb { border: 0; background: #f1f3f5; border-radius: 12px; height: 36px; min-width: 36px; padding: 0 8px; font-size: 18px; cursor: pointer; transition: transform .15s; }
+  .tb.on { background: #ffd23f; transform: scale(1.08); }
+  .sep { width: 1px; height: 28px; background: #e9ecef; }
+  #wrap { flex: 1; position: relative; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar"></div>
+  <div id="wrap"><canvas id="c"></canvas></div>
+</div>
+<script>
+(() => {
+  const COLORS = ["#1c1638", "#ff4f6d", "#ff9f1c", "#ffd23f", "#51cf66", "#2ec4b6", "#4dabf7", "#7c5cff", "#ff8fc7", "#8b5a2b", "#ffffff"];
+  const STAMPS = ["⭐", "❤️", "🌸", "🐱", "🌈", "☀️", "🦋", "🍦"];
+  const bar = document.getElementById("bar"), c = document.getElementById("c"), x = c.getContext("2d"), wrap = document.getElementById("wrap");
+  let color = COLORS[1], size = 12, tool = "brush", stamp = null, drawing = false, lastP = null, hue = 0, undo = [], dpr = Math.min(devicePixelRatio || 1, 2);
+  const mk = (cls, html, title, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.innerHTML = html; b.title = title; b.setAttribute("aria-label", title); b.onclick = fn; bar.appendChild(b); return b; };
+  const swatches = COLORS.map((col, i) => { const b = mk("sw", "", "Colour " + (i + 1), () => { color = col; if (tool === "eraser" || tool === "stamp") tool = "brush"; sync(); }); b.style.background = col; return b; });
+  bar.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
+  const tools = {
+    brush: mk("tb", "🖌️", "Brush", () => { tool = "brush"; sync(); }),
+    rainbow: mk("tb", "🌈", "Rainbow brush", () => { tool = "rainbow"; sync(); }),
+    eraser: mk("tb", "🧽", "Eraser", () => { tool = "eraser"; sync(); }),
+    fill: mk("tb", "🪣", "Fill background", () => { save(); x.globalCompositeOperation = "destination-over"; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = "source-over"; })
+  };
+  const sizes = [6, 14, 30].map((s, i) => mk("tb", `<span style="display:inline-block;width:${4 + i * 6}px;height:${4 + i * 6}px;border-radius:50%;background:#1c1638"></span>`, ["Small", "Medium", "Large"][i] + " brush", () => { size = s; sync(); }));
+  bar.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
+  const stampBtns = STAMPS.map((s) => mk("tb", s, "Stamp " + s, () => { tool = "stamp"; stamp = s; sync(); }));
+  bar.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
+  mk("tb", "↩️", "Undo (Z)", doUndo); mk("tb", "🗑️", "Clear (C)", clearAll); mk("tb", "💾", "Save picture (S)", savePng);
+  function sync() {
+    swatches.forEach((b, i) => b.classList.toggle("on", COLORS[i] === color && (tool === "brush" || tool === "rainbow")));
+    Object.entries(tools).forEach(([k, b]) => b.classList.toggle("on", k === tool));
+    sizes.forEach((b, i) => b.classList.toggle("on", [6, 14, 30][i] === size));
+    stampBtns.forEach((b, i) => b.classList.toggle("on", tool === "stamp" && STAMPS[i] === stamp));
+  }
+  function resize() {
+    const old = c.width ? x.getImageData(0, 0, c.width, c.height) : null;
+    c.width = wrap.clientWidth * dpr; c.height = wrap.clientHeight * dpr;
+    x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    if (old) x.putImageData(old, 0, 0);
+  }
+  function save() { try { undo.push(x.getImageData(0, 0, c.width, c.height)); if (undo.length > 25) undo.shift(); } catch (e) {} }
+  function doUndo() { const s = undo.pop(); if (s) x.putImageData(s, 0, 0); }
+  function clearAll() { save(); const g = x.globalAlpha; x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.globalAlpha = g; }
+  function savePng() { const a = document.createElement("a"); a.download = "my-doodle.png"; a.href = c.toDataURL("image/png"); a.click(); }
+  const pos = (e) => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr]; };
+  function line(a, b, w) {
+    x.lineCap = "round"; x.lineJoin = "round"; x.lineWidth = w * dpr;
+    if (tool === "eraser") x.strokeStyle = "#fff";
+    else if (tool === "rainbow") { hue = (hue + 4) % 360; x.strokeStyle = `hsl(${hue},90%,60%)`; }
+    else x.strokeStyle = color;
+    x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke();
+  }
+  function doStamp(p) {
+    const s = size * 4 * dpr; x.save(); x.translate(p[0], p[1]); x.rotate((Math.random() - 0.5) * 0.5);
+    x.font = `${s}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(stamp, 0, 0); x.restore();
+  }
+  c.addEventListener("pointerdown", (e) => {
+    c.setPointerCapture(e.pointerId); save(); const p = pos(e);
+    if (tool === "stamp") { doStamp(p); return; }
+    drawing = true; lastP = p; line(p, [p[0] + 0.1, p[1]], tool === "eraser" ? size * 2 : size);
+  });
+  c.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs) { const p = pos(ev); const sp = Math.hypot(p[0] - lastP[0], p[1] - lastP[1]) / dpr; line(lastP, p, (tool === "eraser" ? size * 2 : size) * (tool === "rainbow" ? 1 : Math.max(0.6, 1.2 - sp / 60))); lastP = p; }
+  });
+  const stop = () => { drawing = false; }; c.addEventListener("pointerup", stop); c.addEventListener("pointercancel", stop);
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "z") doUndo(); if (k === "c") clearAll(); if (k === "s") savePng(); if (k === "e") { tool = "eraser"; sync(); } if (k === "b") { tool = "brush"; sync(); } if (k === "r") { tool = "rainbow"; sync(); }
+    if (/^[1-9]$/.test(k)) { color = COLORS[+k - 1]; tool = "brush"; sync(); } if (k === "0") { color = COLORS[9]; tool = "brush"; sync(); }
+    if (k === "[" ) { size = Math.max(3, size - 3); } if (k === "]") { size = Math.min(60, size + 3); }
+  });
+  addEventListener("resize", resize);
+  resize(); sync();
+  // a friendly hello so the page isn't empty
+  x.font = `${28 * dpr}px system-ui`; x.fillStyle = "#adb5bd"; x.textAlign = "center"; x.fillText("Draw something amazing! ✏️", c.width / 2, c.height / 2);
+})();
+</script>
+</body>
+</html>

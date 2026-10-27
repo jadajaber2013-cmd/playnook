@@ -1,0 +1,21 @@
+{
+  "title": "Buzzy Bee",
+  "category": "Arcade",
+  "description": "Help a busy little bee fly through gaps in the garden hedges. One tap keeps it buzzing upward — how far can you fly before you bump into something?",
+  "instructions": [
+    "Press Space, Up or W to flap your wings.",
+    "On touch screens, tap anywhere to flap.",
+    "Fly through the gaps between hedges to score.",
+    "Collect flowers for bonus points."
+  ],
+  "tags": [
+    "flying",
+    "tap",
+    "bee",
+    "endless"
+  ],
+  "added": "2026-10-25",
+  "popularity": 84,
+  "license": "Original",
+  "source": "Original work"
+}

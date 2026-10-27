@@ -1,0 +1,23 @@
+{
+  "title": "Memory Match",
+  "category": "Kids",
+  "description": "Flip the cards and find all the matching pairs of cute animals and fruit. A relaxing memory game for kids and grown-ups with three board sizes and a best-score tracker.",
+  "instructions": [
+    "Click or tap a card to flip it over.",
+    "Flip a second card — if they match, they stay face up.",
+    "Find every pair using as few moves as possible.",
+    "Keyboard: use the arrow keys to move and Enter or Space to flip. Press R for a new game.",
+    "Use the size button to switch between 4×4, 4×5 and 6×6 boards."
+  ],
+  "tags": [
+    "memory",
+    "cards",
+    "kids",
+    "brain",
+    "matching"
+  ],
+  "added": "2026-10-22",
+  "popularity": 80,
+  "license": "Original",
+  "source": "Original work"
+}

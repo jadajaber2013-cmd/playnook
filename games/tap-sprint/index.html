@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tap Sprint</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #c2410c; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #pads { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: space-between; padding: 0 14px; pointer-events: none; }
+  #pads button { pointer-events: auto; width: min(38vw, 160px); height: 90px; border-radius: 24px; border: 4px solid #fff9; background: #0004; color: #fff; font: 900 28px system-ui; touch-action: none; transition: transform .05s; }
+  #pads button.on { transform: scale(.94); background: #fff5; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="pads"><button type="button" data-f="L">L</button><button type="button" data-f="R">R</button></div>
+<div id="msg"><div>🏃 Tap Sprint<small>Alternate ← → (or A / D, or the L / R buttons) as fast as you can!<br>Press Space / ↑ near the finish to lean.<br>Press Space or tap to get on your marks</small></div></div>
+<script>
+(() => {
+  const DIST = 100, NAMES = ["You", "Rocket Rita", "Turbo Tom", "Zippy Zoe"], SHIRTS = ["#ff4f7b", "#4dabf7", "#ffd23f", "#51cf66"];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, run, state = "menu", last = 0, t = 0, lastFoot = null, countdown = 0, raceT = 0, crowd = [], best = 0, popups = [];
+  try { best = +localStorage.getItem("tap-sprint-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  crowd = Array.from({ length: 160 }, (_, i) => ({ x: i * 13 % 2000, y: Math.random(), col: `hsl(${Math.random() * 360},70%,${50 + Math.random() * 20}%)`, ph: Math.random() * 6 }));
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function start() {
+    run = NAMES.map((n, i) => ({ name: n, pos: 0, v: 0, cpu: i > 0, top: 9.6 + Math.random() * 1.0 + i * 0.15, react: 0.15 + Math.random() * 0.15, step: 0, time: 0, lean: 0 }));
+    lastFoot = null; countdown = 3; raceT = 0; popups = []; state = "play"; msg.hidden = true;
+  }
+  function tap(f) {
+    if (state !== "play") return;
+    if (countdown > 0) { if (countdown < 2.6) { popups.push({ text: "False start! -0.3s", life: 1 }); run[0].v = -2; } return; }
+    const me = run[0]; if (me.time) return;
+    if (f === lastFoot) { me.v *= 0.92; return; }
+    lastFoot = f; me.v = Math.min(11.8, me.v + 1.05); me.step += 1;
+  }
+  function lean() { const me = run[0]; if (state === "play" && !me.time && me.pos > DIST - 6 && !me.lean) { me.lean = 0.35; popups.push({ text: "LEAN!", life: 0.8 }); } }
+  function update(dt) {
+    t += dt;
+    if (countdown > 0) { countdown -= dt; return; }
+    raceT += dt;
+    run.forEach((r) => {
+      if (r.time) { r.v *= Math.pow(0.2, dt); r.pos += r.v * dt; return; }
+      if (r.cpu) { if (raceT > r.react) r.v += (r.top - r.v) * dt * 0.9; if (r.pos > DIST - 3 && !r.lean && Math.random() < 0.5) r.lean = 0.3; }
+      else r.v = Math.max(0, r.v - dt * (1.5 + r.v * 0.45)); // faster = harder to keep up
+      r.lean = Math.max(0, r.lean - dt);
+      r.pos += (r.v + (r.lean > 0 ? 1.5 : 0)) * dt;
+      r.step += r.v * dt * (r.cpu ? 0.45 : 0);
+      if (r.pos >= DIST) r.time = raceT - (r.pos - DIST) / Math.max(1, r.v);
+    });
+    if (run[0].time && state === "play") {
+      state = "over";
+      const order = run.filter((r) => r.time).sort((a, b) => a.time - b.time), place = order.indexOf(run[0]) + 1, mine = run[0].time;
+      const nb = !best || mine < best; if (nb) { best = mine; try { localStorage.setItem("tap-sprint-best", best); } catch (e) {} }
+      setTimeout(() => {
+        const all = run.slice().sort((a, b) => (a.time || 99) - (b.time || 99));
+        show(["🥇 Gold!", "🥈 Silver!", "🥉 Bronze!", "4th place"][Math.min(3, all.indexOf(run[0]))], `Your time: ${mine.toFixed(2)}s${nb ? " · 🏆 personal best!" : ` · Best ${best.toFixed(2)}s`}<br>${all.map((r, i) => `${i + 1}. ${r.name} ${r.time ? r.time.toFixed(2) + "s" : "—"}`).join("<br>")}<br>Press Space or tap to race again`);
+      }, 1200);
+    }
+  }
+  function runner(px, py, s, shirt, step, moving) {
+    const ph = step * Math.PI, sw = moving ? Math.sin(ph) : 0;
+    x.save(); x.translate(px, py); x.scale(s, s);
+    x.strokeStyle = "#5a3b22"; x.lineWidth = 6; x.lineCap = "round";
+    x.beginPath(); x.moveTo(0, -30); x.lineTo(sw * 14, -12); x.lineTo(sw * 18, 0); x.moveTo(0, -30); x.lineTo(-sw * 14, -12); x.lineTo(-sw * 10 - 4, 0); x.stroke();
+    x.fillStyle = shirt; x.beginPath(); x.roundRect(-8, -56, 16, 28, 6); x.fill();
+    x.strokeStyle = "#5a3b22"; x.beginPath(); x.moveTo(0, -50); x.lineTo(-sw * 14, -38); x.moveTo(0, -50); x.lineTo(sw * 14, -36); x.stroke();
+    x.fillStyle = "#8a5a36"; x.beginPath(); x.arc(2, -64, 9, 0, 7); x.fill();
+    x.restore();
+  }
+  function draw(dt) {
+    const sky = x.createLinearGradient(0, 0, 0, H * 0.35); sky.addColorStop(0, "#74c0fc"); sky.addColorStop(1, "#d0ebff"); x.fillStyle = sky; x.fillRect(0, 0, W, H);
+    const me = run ? run[0] : { pos: 0 }, scale = Math.min(W / 700, H / 500), mPx = 60 * scale; // pixels per metre
+    const cam = me.pos * mPx - W * 0.3;
+    // stands + crowd
+    x.fillStyle = "#495057"; x.fillRect(0, H * 0.12, W, H * 0.2);
+    for (const p of crowd) { const px = ((p.x - cam * 0.5) % 2000 + 2000) % 2000 - 40; if (px > W + 20) continue; x.fillStyle = p.col; const jump = state === "play" && countdown <= 0 ? Math.abs(Math.sin(t * 8 + p.ph)) * 4 : 0; x.beginPath(); x.arc(px, H * 0.15 + p.y * H * 0.15 - jump, 5 * scale, 0, 7); x.fill(); }
+    x.fillStyle = "#2f9e44"; x.fillRect(0, H * 0.32, W, H * 0.06);
+    const top = H * 0.38, laneH = (H * 0.48) / 4;
+    x.fillStyle = "#d9480f"; x.fillRect(0, top, W, laneH * 4);
+    x.strokeStyle = "#fff"; x.lineWidth = 2; for (let l = 0; l <= 4; l++) { x.beginPath(); x.moveTo(0, top + l * laneH); x.lineTo(W, top + l * laneH); x.stroke(); }
+    x.fillStyle = "#2f9e44"; x.fillRect(0, top + laneH * 4, W, H);
+    for (let m = 0; m <= DIST; m += 10) { const px = m * mPx - cam; if (px < -50 || px > W + 50) continue; x.fillStyle = "#ffffffaa"; x.fillRect(px - 1, top, 2, laneH * 4); x.font = `800 ${12 * scale + 4}px system-ui`; x.textAlign = "center"; x.fillText(m + " m", px, top - 6); }
+    const fin = DIST * mPx - cam; for (let i = 0; i < 16; i++) { x.fillStyle = i % 2 ? "#111" : "#fff"; x.fillRect(fin - 6, top + i * laneH * 4 / 16, 12, laneH * 4 / 16); }
+    if (run) run.forEach((r, i) => { const py = top + laneH * (i + 0.85); runner(r.pos * mPx - cam, py, scale * 1.1 * (0.85 + i * 0.05), SHIRTS[i], r.cpu ? r.step : r.step / 2, r.v > 0.3); x.fillStyle = "#fff"; x.font = `800 ${11 * scale + 3}px system-ui`; x.textAlign = "left"; x.fillText(i === 0 ? "YOU" : r.name.split(" ")[1], 6, top + laneH * i + 14); });
+    if (run && state !== "menu") {
+      x.fillStyle = "#0008"; x.beginPath(); x.roundRect(10, 10, 210, 60, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 22px system-ui"; x.textAlign = "left"; x.fillText(`⏱ ${raceT.toFixed(2)}s`, 22, 38);
+      x.font = "700 13px system-ui"; x.fillText(`${Math.max(0, DIST - me.pos).toFixed(0)} m to go · ${(me.v * 3.6).toFixed(0)} km/h`, 22, 58);
+      x.fillStyle = "#ffffff33"; x.fillRect(W - 30, 20, 14, 120); x.fillStyle = "#ffd23f"; const pw = Math.min(1, me.v / 11.8) * 120; x.fillRect(W - 30, 140 - pw, 14, pw);
+      if (countdown > 0) { x.font = "900 80px system-ui"; x.textAlign = "center"; x.fillStyle = "#fff"; x.strokeStyle = "#0007"; x.lineWidth = 8; const txt = countdown > 2 ? "On your marks" : countdown > 1 ? "Set…" : "…"; x.font = `900 ${Math.min(60, W / 10)}px system-ui`; x.strokeText(txt, W / 2, H * 0.3); x.fillText(txt, W / 2, H * 0.3); }
+      else if (raceT < 0.8) { x.font = `900 ${Math.min(80, W / 7)}px system-ui`; x.textAlign = "center"; x.fillStyle = "#51cf66"; x.fillText("GO!", W / 2, H * 0.3); }
+      for (const p of popups) { p.life -= dt; x.globalAlpha = Math.max(0, p.life); x.font = "900 30px system-ui"; x.textAlign = "center"; x.fillStyle = "#ffd23f"; x.fillText(p.text, W / 2, H * 0.3 - (1 - p.life) * 40); }
+      x.globalAlpha = 1; popups = popups.filter((p) => p.life > 0);
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play" || state === "over") update(dt); draw(dt); requestAnimationFrame(loop); }
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowleft", "a"].includes(k)) { e.preventDefault(); if (!e.repeat) tap("L"); }
+    if (["arrowright", "d"].includes(k)) { e.preventDefault(); if (!e.repeat) tap("R"); }
+    if (k === " " || k === "enter" || k === "arrowup" || k === "w") { e.preventDefault(); if (state === "menu" || (state === "over" && !msg.hidden)) start(); else lean(); }
+  });
+  document.querySelectorAll("#pads button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add("on"); if (state === "menu" || (state === "over" && !msg.hidden)) return start(); tap(b.dataset.f); if (run && run[0].pos > DIST - 6) lean(); });
+    b.addEventListener("pointerup", () => b.classList.remove("on")); b.addEventListener("pointerleave", () => b.classList.remove("on"));
+  });
+  msg.addEventListener("pointerdown", () => { if (state === "menu" || state === "over") start(); });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

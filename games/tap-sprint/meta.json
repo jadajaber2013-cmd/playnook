@@ -1,0 +1,21 @@
+{
+  "title": "Tap Sprint",
+  "category": "Racing",
+  "description": "A 100-metre dash against three computer runners! Tap as fast as you can to sprint — and don't forget to lean at the finish line.",
+  "instructions": [
+    "Alternate the Left and Right arrow keys (or A and D) as fast as you can.",
+    "On touch screens, tap the two big buttons one after the other.",
+    "Press Space near the finish line to lean for extra speed.",
+    "Beat the other runners to win gold."
+  ],
+  "tags": [
+    "running",
+    "tapping",
+    "sprint",
+    "athletics"
+  ],
+  "added": "2026-09-14",
+  "popularity": 65,
+  "license": "Original",
+  "source": "Original work"
+}

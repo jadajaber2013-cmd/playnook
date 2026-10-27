@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Hoop Shot</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #3b2a5e; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🏀 Hoop Shot<small>Drag back from the ball and let go to shoot (like a slingshot).<br>Keyboard: ← → aim, hold Space for power, release to shoot.<br>60 seconds — swishes score extra! Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const GRAV = 1500;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, S, ball, hoop, score, timeLeft, state = "menu", last = 0, drag = null, kAng = -1.0, kPow = 0, charging = false, fx = [], streak = 0, best = 0, t = 0, netWobble = 0;
+  try { best = +localStorage.getItem("hoop-shot-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; S = Math.min(W / 900, H / 600); c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  const floorY = () => H - 60 * S;
+  function hoopPos() { const baseY = H * 0.42 + (hoop.move ? Math.sin(t * 1.4) * H * 0.12 : 0); return { x: W - 170 * S, y: baseY, r: 46 * S }; }
+  function newBall() { ball = { x: (120 + Math.random() * Math.min(260, W * 0.3 / S)) * S, y: floorY() - 140 * S - Math.random() * 120 * S, vx: 0, vy: 0, r: 24 * S, live: false, touched: false, scored: false, spin: 0 }; }
+  function start() { hoop = { move: false }; score = 0; streak = 0; timeLeft = 60; fx = []; newBall(); state = "play"; msg.hidden = true; }
+  function launch(vx, vy) { if (ball.live) return; ball.vx = vx; ball.vy = vy; ball.live = true; ball.spin = -vx / 200; }
+  function update(dt) {
+    t += dt; timeLeft -= dt; netWobble = Math.max(0, netWobble - dt * 3);
+    if (timeLeft <= 0) {
+      state = "over"; if (score > best) { best = score; try { localStorage.setItem("hoop-shot-best", best); } catch (e) {} }
+      return show("⏰ Time!", `Score: ${score} · Best: ${best}<br>Press Space or tap to play again`);
+    }
+    if (charging) kPow = Math.min(1, kPow + dt * 0.9);
+    if (!ball.live) return;
+    const h = hoopPos(), steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const sdt = dt / steps, py = ball.y;
+      ball.vy += GRAV * S * sdt; ball.x += ball.vx * sdt; ball.y += ball.vy * sdt;
+      // rim ends act as small solid circles
+      for (const rx of [h.x - h.r, h.x + h.r]) {
+        const dx = ball.x - rx, dy = ball.y - h.y, d = Math.hypot(dx, dy), min = ball.r + 4 * S;
+        if (d < min) { const nx = dx / d, ny = dy / d, vn = ball.vx * nx + ball.vy * ny; if (vn < 0) { ball.vx -= 1.6 * vn * nx; ball.vy -= 1.6 * vn * ny; } ball.x = rx + nx * min; ball.y = h.y + ny * min; ball.touched = true; }
+      }
+      // backboard
+      const bbx = h.x + h.r + 18 * S;
+      if (ball.x + ball.r > bbx && ball.x < bbx + 20 * S && ball.y > h.y - 140 * S && ball.y < h.y + 20 * S && ball.vx > 0) { ball.vx *= -0.6; ball.x = bbx - ball.r; ball.touched = true; }
+      if (!ball.scored && py < h.y && ball.y >= h.y && Math.abs(ball.x - h.x) < h.r - 6 * S && ball.vy > 0) {
+        ball.scored = true; streak++; netWobble = 1;
+        const pts = (ball.touched ? 2 : 3) + (streak >= 3 ? 1 : 0); score += pts;
+        fx.push({ text: ball.touched ? `+${pts}` : `SWISH! +${pts}`, x: h.x, y: h.y - 60 * S, life: 1.1 });
+        for (let k = 0; k < 24; k++) fx.push({ x: h.x, y: h.y + 20 * S, vx: (Math.random() - 0.5) * 500, vy: -Math.random() * 500, life: 0.8, col: `hsl(${Math.random() * 60 + 20},100%,60%)` });
+        if (score >= 10) hoop.move = true;
+      }
+      if (ball.y + ball.r > floorY()) { ball.y = floorY() - ball.r; ball.vy *= -0.55; ball.vx *= 0.8; }
+      if (ball.x < ball.r) { ball.x = ball.r; ball.vx *= -0.6; }
+    }
+    if ((Math.abs(ball.vy) < 40 && ball.y + ball.r >= floorY() - 1) || ball.x > W + 100 || ball.x < -100) { if (!ball.scored) streak = 0; newBall(); }
+  }
+  function draw(dt) {
+    const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#2a1d52"); g.addColorStop(1, "#6b3fa0"); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < 6; i++) { x.fillStyle = "#ffffff10"; x.beginPath(); x.arc(W * (i + 0.5) / 6, H * 0.1, 30 * S, 0, 7); x.fill(); }
+    x.fillStyle = "#c98a46"; x.fillRect(0, floorY(), W, H); x.fillStyle = "#b07636"; for (let i = 0; i < W; i += 60 * S) x.fillRect(i, floorY(), 2, H);
+    x.strokeStyle = "#ffffff55"; x.lineWidth = 4 * S; x.beginPath(); x.arc(W - 170 * S, floorY(), 260 * S, Math.PI, Math.PI * 1.5); x.stroke();
+    if (!hoop) return;
+    const h = hoopPos();
+    x.fillStyle = "#888"; x.fillRect(h.x + h.r + 30 * S, h.y - 130 * S, 12 * S, floorY() - h.y + 130 * S);
+    x.fillStyle = "#fff"; x.beginPath(); x.roundRect(h.x + h.r + 18 * S, h.y - 140 * S, 20 * S, 160 * S, 4); x.fill();
+    x.strokeStyle = "#e03131"; x.lineWidth = 4 * S; x.strokeRect(h.x + h.r + 22 * S, h.y - 70 * S, 12 * S, 50 * S);
+    // net
+    x.strokeStyle = "#ffffffcc"; x.lineWidth = 2;
+    for (let i = 0; i <= 6; i++) { const top = h.x - h.r + i * h.r / 3, bot = h.x - h.r * 0.55 + i * h.r * 0.55 / 3 + Math.sin(t * 20 + i) * netWobble * 6; x.beginPath(); x.moveTo(top, h.y); x.lineTo(bot, h.y + 60 * S + netWobble * 12 * S); x.stroke(); }
+    for (let j = 1; j <= 3; j++) { const k = j / 3, wy = h.y + k * (60 * S + netWobble * 12 * S), hw = h.r * (1 - k * 0.45); x.beginPath(); x.moveTo(h.x - hw, wy); x.lineTo(h.x + hw, wy); x.stroke(); }
+    // ball (drawn between back and front rim)
+    if (ball) {
+      if (!ball.live) {
+        let vx = 0, vy = 0;
+        if (drag) { vx = (drag.sx - drag.x) * 5.2; vy = (drag.sy - drag.y) * 5.2; } else if (charging || kPow) { const p = 500 + kPow * 900; vx = Math.cos(kAng) * p * S; vy = Math.sin(kAng) * p * S; }
+        if (!drag && !charging) { const p = 900 * S; vx = Math.cos(kAng) * p; vy = Math.sin(kAng) * p; x.globalAlpha = 0.35; }
+        let px = ball.x, py = ball.y, pvx = vx, pvy = vy;
+        x.fillStyle = "#fff"; for (let i = 0; i < 18; i++) { for (let k = 0; k < 3; k++) { pvy += GRAV * S * 0.012; px += pvx * 0.012; py += pvy * 0.012; } x.beginPath(); x.arc(px, py, 3.5 * S * (1 - i / 22), 0, 7); x.fill(); }
+        x.globalAlpha = 1;
+      }
+      ball.spin += (ball.live ? ball.vx / 300 : 0) * dt;
+      x.save(); x.translate(ball.x, ball.y); x.rotate(ball.spin * 6);
+      x.fillStyle = "#f76707"; x.beginPath(); x.arc(0, 0, ball.r, 0, 7); x.fill();
+      x.strokeStyle = "#7a2e00"; x.lineWidth = 2; x.beginPath(); x.arc(0, 0, ball.r, 0, 7); x.moveTo(-ball.r, 0); x.lineTo(ball.r, 0); x.moveTo(0, -ball.r); x.lineTo(0, ball.r); x.stroke();
+      x.beginPath(); x.arc(-ball.r * 1.3, 0, ball.r * 0.9, -0.8, 0.8); x.stroke(); x.beginPath(); x.arc(ball.r * 1.3, 0, ball.r * 0.9, Math.PI - 0.8, Math.PI + 0.8); x.stroke();
+      x.restore();
+    }
+    x.strokeStyle = "#ff6b2b"; x.lineWidth = 6 * S; x.beginPath(); x.moveTo(h.x - h.r, h.y); x.lineTo(h.x + h.r, h.y); x.stroke();
+    for (const f of fx) {
+      f.life -= dt; x.globalAlpha = Math.max(0, Math.min(1, f.life * 2));
+      if (f.text) { f.y -= 50 * dt; x.font = `900 ${32 * S + 8}px system-ui`; x.textAlign = "center"; x.lineWidth = 6; x.strokeStyle = "#0008"; x.strokeText(f.text, f.x, f.y); x.fillStyle = "#ffd23f"; x.fillText(f.text, f.x, f.y); }
+      else { f.vy += 900 * dt; f.x += f.vx * dt; f.y += f.vy * dt; x.fillStyle = f.col; x.fillRect(f.x, f.y, 5, 5); }
+    }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.life > 0);
+    x.fillStyle = "#000a"; x.beginPath(); x.roundRect(W / 2 - 120, 10, 240, 54, 14); x.fill();
+    x.fillStyle = "#fff"; x.font = "900 24px system-ui"; x.textAlign = "center"; x.fillText(`🏀 ${score}   ⏱ ${Math.max(0, Math.ceil(timeLeft))}`, W / 2, 46);
+    if (streak >= 3) { x.fillStyle = "#ff9f1c"; x.font = "900 16px system-ui"; x.fillText(`🔥 On fire! x${streak}`, W / 2, 84); }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  addEventListener("pointerdown", (e) => {
+    if (state !== "play") return start();
+    if (!ball.live) drag = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY };
+  });
+  addEventListener("pointermove", (e) => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; } });
+  addEventListener("pointerup", () => {
+    if (!drag) return; const vx = (drag.sx - drag.x) * 5.2, vy = (drag.sy - drag.y) * 5.2; drag = null;
+    if (Math.hypot(vx, vy) > 150) launch(Math.min(1700 * S, vx), Math.max(-1900 * S, vy));
+  });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) e.preventDefault();
+    if (state !== "play") { if (k === " " || k === "enter") start(); return; }
+    if (k === "arrowleft" || k === "a" || k === "arrowup" || k === "w") kAng = Math.max(-1.45, kAng - 0.05);
+    if (k === "arrowright" || k === "d" || k === "arrowdown" || k === "s") kAng = Math.min(-0.2, kAng + 0.05);
+    if (k === " " && !e.repeat && !ball.live) { charging = true; kPow = 0; }
+  });
+  addEventListener("keyup", (e) => { if (e.key === " " && charging) { charging = false; const p = (500 + kPow * 900) * S; launch(Math.cos(kAng) * p, Math.sin(kAng) * p); kPow = 0; } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

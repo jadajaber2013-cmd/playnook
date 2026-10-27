@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Light Switch</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: radial-gradient(ellipse at top, #1d1a3f, #07061a); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 10px; box-sizing: border-box; }
+  #hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span, #hud button { background: #ffffff14; padding: 8px 14px; border-radius: 999px; border: 0; color: #fff; font: inherit; font-weight: 800; }
+  #hud button { cursor: pointer; }
+  #board { display: grid; gap: var(--g); grid-template-columns: repeat(var(--n), var(--c)); }
+  .l { width: var(--c); height: var(--c); border-radius: 22%; border: 0; cursor: pointer; background: #1e1b3a; box-shadow: inset 0 0 0 2px #ffffff12; transition: background .25s, box-shadow .25s, transform .15s cubic-bezier(.34,1.56,.64,1); position: relative; padding: 0; }
+  .l::after { content: ""; position: absolute; inset: 28%; border-radius: 50%; background: #ffffff10; transition: background .25s, box-shadow .25s; }
+  .l.on { background: #3a2c00; box-shadow: inset 0 0 0 2px #ffd23f88, 0 0 26px #ffd23f66; }
+  .l.on::after { background: radial-gradient(circle, #fff7c2, #ffd23f 60%, #ff9f1c); box-shadow: 0 0 24px #ffd23f; }
+  .l.flip { transform: scale(.88); }
+  .l.cur { outline: 3px solid #7cf7ff; outline-offset: 3px; }
+  #win { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; text-align: center; font-size: 30px; font-weight: 900; }
+  #win[hidden] { display: none; }
+  #win small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #win button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+  #tip { font-size: 13px; opacity: .7; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><button type="button" id="prev">◀</button><span id="lvl">Level 1</span><button type="button" id="next">▶</button><span id="moves">Moves: 0</span><button type="button" id="reset">↻ Restart</button></div>
+  <div id="board"></div>
+  <div id="tip">Each tap flips a light and its neighbours. Turn them <b>all off</b>!<br>Keyboard: arrows move · Space flips · R restarts</div>
+</div>
+<div id="win" hidden><div>🌙 Lights out!<small id="winText"></small><button type="button" id="go">Next level ▶</button></div></div>
+<script>
+(() => {
+  const LEVELS = 50;
+  const boardEl = document.getElementById("board");
+  let lvl = 1, unlocked = 1, N, cells, start, moves, cur = 0, btns = [];
+  try { unlocked = +localStorage.getItem("light-switch-unlocked") || 1; lvl = unlocked; } catch (e) {}
+  // Seeded random so every level is always the same puzzle.
+  function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }; }
+  function build() {
+    lvl = Math.max(1, Math.min(LEVELS, lvl));
+    N = lvl < 8 ? 3 : lvl < 20 ? 4 : lvl < 35 ? 5 : 6;
+    const r = rng(lvl * 7919 + 13), presses = Math.min(N * N - 1, 2 + Math.floor(lvl / 3));
+    cells = new Array(N * N).fill(false);
+    const chosen = new Set();
+    while (chosen.size < presses) chosen.add(Math.floor(r() * N * N));
+    chosen.forEach((i) => toggle(i, cells));
+    if (cells.every((v) => !v)) toggle(0, cells);
+    start = cells.slice(); moves = 0; cur = Math.min(cur, N * N - 1);
+    boardEl.innerHTML = ""; btns = [];
+    const cs = Math.floor(Math.min((innerWidth - 40) / N, (innerHeight - 190) / N, 96));
+    boardEl.style.setProperty("--n", N); boardEl.style.setProperty("--c", cs - 10 + "px"); boardEl.style.setProperty("--g", "10px");
+    for (let i = 0; i < N * N; i++) {
+      const b = document.createElement("button"); b.className = "l"; b.type = "button"; b.setAttribute("aria-label", "Light " + (i + 1));
+      b.addEventListener("click", () => { cur = i; press(i); });
+      boardEl.appendChild(b); btns.push(b);
+    }
+    document.getElementById("lvl").textContent = `Level ${lvl} / ${LEVELS}`;
+    render();
+  }
+  function toggle(i, arr) {
+    const r = Math.floor(i / N), c = i % N;
+    [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dr, dc]) => { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < N && cc >= 0 && cc < N) arr[rr * N + cc] = !arr[rr * N + cc]; });
+  }
+  function press(i) {
+    if (!document.getElementById("win").hidden) return;
+    toggle(i, cells); moves++;
+    const r = Math.floor(i / N), c = i % N;
+    [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dr, dc], k) => { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < N && cc >= 0 && cc < N) { const b = btns[rr * N + cc]; setTimeout(() => { b.classList.add("flip"); setTimeout(() => b.classList.remove("flip"), 120); }, k * 25); } });
+    render();
+    if (cells.every((v) => !v)) {
+      if (lvl >= unlocked) { unlocked = Math.min(LEVELS, lvl + 1); try { localStorage.setItem("light-switch-unlocked", unlocked); } catch (e) {} }
+      document.getElementById("winText").textContent = `Solved level ${lvl} in ${moves} moves.`;
+      document.getElementById("go").textContent = lvl < LEVELS ? "Next level ▶" : "Play again";
+      setTimeout(() => { document.getElementById("win").hidden = false; document.getElementById("go").focus(); }, 450);
+    }
+  }
+  function render() {
+    btns.forEach((b, i) => { b.classList.toggle("on", cells[i]); b.classList.toggle("cur", i === cur && kbd); });
+    document.getElementById("moves").textContent = "Moves: " + moves;
+  }
+  let kbd = false;
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), r = Math.floor(cur / N), c = cur % N;
+    const m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); kbd = true; const rr = Math.max(0, Math.min(N - 1, r + m[0])), cc = Math.max(0, Math.min(N - 1, c + m[1])); cur = rr * N + cc; render(); }
+    if ((k === " " || k === "enter") && document.getElementById("win").hidden) { e.preventDefault(); kbd = true; press(cur); }
+    if (k === "r") { cells = start.slice(); moves = 0; render(); }
+  });
+  document.getElementById("reset").addEventListener("click", () => { cells = start.slice(); moves = 0; render(); });
+  document.getElementById("prev").addEventListener("click", () => { if (lvl > 1) { lvl--; build(); } });
+  document.getElementById("next").addEventListener("click", () => { if (lvl < unlocked) { lvl++; build(); } });
+  document.getElementById("go").addEventListener("click", () => { document.getElementById("win").hidden = true; lvl = lvl < LEVELS ? lvl + 1 : 1; build(); });
+  addEventListener("resize", () => { const saved = cells.slice(), m = moves, st = start.slice(); build(); cells = saved; start = st; moves = m; render(); });
+  build();
+})();
+</script>
+</body>
+</html>

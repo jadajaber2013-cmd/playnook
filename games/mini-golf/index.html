@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mini Golf</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b4d2b; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; margin: 0 auto; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 32px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>⛳ Mini Golf<small>Drag back from the ball, aim, and let go to putt.<br>Keyboard: ← → aim, hold Space for power, release to putt.<br>Avoid the water! Press Space or tap to tee off</small></div></div>
+<script>
+(() => {
+  const VW = 400, VH = 640;
+  // Each hole: tee, cup, par, walls [x,y,w,h], water [x,y,w,h], sand [x,y,w,h], bumpers [x,y,r]
+  const HOLES = [
+    { tee: [200, 560], cup: [200, 110], par: 2, walls: [], water: [], sand: [], bump: [] },
+    { tee: [100, 560], cup: [300, 110], par: 2, walls: [[60, 320, 200, 18]], water: [], sand: [], bump: [] },
+    { tee: [200, 570], cup: [200, 90], par: 3, walls: [[40, 400, 140, 16], [220, 250, 140, 16]], water: [], sand: [[150, 160, 100, 50]], bump: [] },
+    { tee: [80, 560], cup: [320, 100], par: 3, walls: [], water: [[40, 260, 220, 90]], sand: [], bump: [[300, 330, 22]] },
+    { tee: [200, 570], cup: [200, 100], par: 3, walls: [], water: [], sand: [], bump: [[140, 300, 26], [260, 300, 26], [200, 210, 26], [200, 400, 22]] },
+    { tee: [70, 570], cup: [330, 80], par: 4, walls: [[30, 430, 260, 16], [110, 280, 260, 16], [30, 140, 260, 16]], water: [], sand: [], bump: [] },
+    { tee: [200, 580], cup: [200, 70], par: 3, walls: [[30, 300, 120, 16], [250, 300, 120, 16]], water: [[150, 380, 100, 60]], sand: [[160, 150, 80, 40]], bump: [] },
+    { tee: [320, 570], cup: [80, 90], par: 3, walls: [[170, 180, 16, 300]], water: [[40, 330, 110, 70]], sand: [], bump: [[300, 250, 24]] },
+    { tee: [200, 590], cup: [200, 70], par: 4, walls: [[30, 470, 150, 14], [220, 470, 150, 14], [100, 330, 200, 14], [30, 200, 150, 14], [220, 200, 150, 14]], water: [[30, 380, 60, 60], [310, 380, 60, 60]], sand: [[170, 110, 60, 40]], bump: [[200, 260, 18]] }
+  ];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let scale, hi, hole, ball, strokes, card = [], state = "menu", last = 0, drag = null, aimA = -Math.PI / 2, pow = 0, charging = false, safe, sinking = 0, ripple = [], t = 0, best = 0;
+  try { best = +localStorage.getItem("mini-golf-best") || 0; } catch (e) {}
+  function resize() { scale = Math.min(innerWidth / VW, innerHeight / VH); const d = Math.min(devicePixelRatio || 1, 2); c.style.width = VW * scale + "px"; c.style.height = VH * scale + "px"; c.style.marginTop = (innerHeight - VH * scale) / 2 + "px"; c.width = VW * scale * d; c.height = VH * scale * d; x.setTransform(scale * d, 0, 0, scale * d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function load(i) { hi = i; hole = HOLES[i]; ball = { x: hole.tee[0], y: hole.tee[1], vx: 0, vy: 0, r: 7, z: 1 }; safe = [ball.x, ball.y]; strokes = 0; sinking = 0; aimA = Math.atan2(hole.cup[1] - ball.y, hole.cup[0] - ball.x); }
+  function start() { card = []; load(0); state = "play"; msg.hidden = true; }
+  const moving = () => Math.hypot(ball.vx, ball.vy) > 4;
+  function putt(vx, vy) { if (moving() || sinking) return; const sp = Math.min(900, Math.hypot(vx, vy)); if (sp < 30) return; const a = Math.atan2(vy, vx); ball.vx = Math.cos(a) * sp; ball.vy = Math.sin(a) * sp; strokes++; safe = [ball.x, ball.y]; }
+  const inRect = (r, px, py, pad = 0) => px > r[0] - pad && px < r[0] + r[2] + pad && py > r[1] - pad && py < r[1] + r[3] + pad;
+  function update(dt) {
+    t += dt;
+    if (charging) pow = Math.min(1, pow + dt * 0.8);
+    if (sinking) { sinking += dt; ball.z = Math.max(0, 1 - sinking * 3); if (sinking > 1.1) nextHole(); return; }
+    const steps = 6, walls = [[0, 0, VW, 24], [0, VH - 24, VW, 24], [0, 0, 24, VH], [VW - 24, 0, 24, VH], ...hole.walls];
+    for (let s = 0; s < steps; s++) {
+      const sdt = dt / steps;
+      const inSand = hole.sand.some((r) => inRect(r, ball.x, ball.y));
+      const fr = Math.pow(inSand ? 0.12 : 0.55, sdt); ball.vx *= fr; ball.vy *= fr;
+      ball.x += ball.vx * sdt; ball.y += ball.vy * sdt;
+      for (const w of walls) {
+        const nx = Math.max(w[0], Math.min(ball.x, w[0] + w[2])), ny = Math.max(w[1], Math.min(ball.y, w[1] + w[3])), dx = ball.x - nx, dy = ball.y - ny, d = Math.hypot(dx, dy);
+        if (d < ball.r && d > 0) { const ux = dx / d, uy = dy / d, vn = ball.vx * ux + ball.vy * uy; if (vn < 0) { ball.vx -= 1.8 * vn * ux; ball.vy -= 1.8 * vn * uy; } ball.x = nx + ux * ball.r; ball.y = ny + uy * ball.r; }
+      }
+      for (const b of hole.bump) {
+        const dx = ball.x - b[0], dy = ball.y - b[1], d = Math.hypot(dx, dy);
+        if (d < b[2] + ball.r) { const ux = dx / d, uy = dy / d, vn = ball.vx * ux + ball.vy * uy; if (vn < 0) { ball.vx -= 2.2 * vn * ux; ball.vy -= 2.2 * vn * uy; b.hit = 0.3; } ball.x = b[0] + ux * (b[2] + ball.r); ball.y = b[1] + uy * (b[2] + ball.r); }
+      }
+      const dc = Math.hypot(ball.x - hole.cup[0], ball.y - hole.cup[1]), sp = Math.hypot(ball.vx, ball.vy);
+      if (dc < 10 && sp < 380) { sinking = 0.001; ball.x = hole.cup[0]; ball.y = hole.cup[1]; ball.vx = ball.vy = 0; return; }
+      if (dc < 22 && sp < 260) { ball.vx += (hole.cup[0] - ball.x) * 2 * sdt * 10; ball.vy += (hole.cup[1] - ball.y) * 2 * sdt * 10; }
+    }
+    if (!moving()) { ball.vx = ball.vy = 0; }
+    if (hole.water.some((r) => inRect(r, ball.x, ball.y))) { for (let i = 0; i < 3; i++) ripple.push({ x: ball.x, y: ball.y, r: 4 + i * 6, life: 0.8 }); strokes++; ball.x = safe[0]; ball.y = safe[1]; ball.vx = ball.vy = 0; flash = { text: "Splash! +1", life: 1.2 }; }
+  }
+  let flash = null;
+  function nextHole() {
+    card.push(strokes);
+    const diff = strokes - hole.par, word = strokes === 1 ? "Hole in one! 🎉" : ["Eagle! 🦅", "Birdie! 🐦", "Par 👍", "Bogey", "Double bogey"][Math.max(0, Math.min(4, diff + 2))];
+    flash = { text: word, life: 1.6 };
+    if (hi + 1 < HOLES.length) load(hi + 1);
+    else {
+      state = "over"; const tot = card.reduce((a, b) => a + b, 0), par = HOLES.reduce((a, h) => a + h.par, 0);
+      const nb = !best || tot < best; if (nb) { best = tot; try { localStorage.setItem("mini-golf-best", best); } catch (e) {} }
+      show("🏆 Round complete!", `${tot} strokes (par ${par}, ${tot - par >= 0 ? "+" : ""}${tot - par})${nb ? " · new best!" : ` · best ${best}`}<br>${card.map((s, i) => `H${i + 1}: ${s}`).join(" · ")}<br>Press Space or tap to play again`);
+    }
+  }
+  function draw(dt) {
+    x.fillStyle = "#1b4d2b"; x.fillRect(0, 0, VW, VH);
+    if (!hole) load(0);
+    x.fillStyle = "#6b4420"; x.fillRect(0, 0, VW, VH);
+    x.fillStyle = "#51cf66"; x.beginPath(); x.roundRect(18, 18, VW - 36, VH - 36, 16); x.fill();
+    for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? "#4cc461" : "#56d46c"; x.fillRect(24, 24 + i * (VH - 48) / 12, VW - 48, (VH - 48) / 12); }
+    for (const r of hole.sand) { x.fillStyle = "#f2d38a"; x.beginPath(); x.roundRect(r[0], r[1], r[2], r[3], 18); x.fill(); x.fillStyle = "#e6c271"; for (let k = 0; k < 8; k++) x.fillRect(r[0] + 10 + (k * 37) % (r[2] - 20), r[1] + 8 + (k * 23) % (r[3] - 14), 3, 3); }
+    for (const r of hole.water) { x.fillStyle = "#228be6"; x.beginPath(); x.roundRect(r[0], r[1], r[2], r[3], 14); x.fill(); x.strokeStyle = "#74c0fc"; x.lineWidth = 2; for (let k = 0; k < 3; k++) { x.beginPath(); const yy = r[1] + r[3] * (k + 1) / 4; x.moveTo(r[0] + 10, yy + Math.sin(t * 3 + k) * 2); x.quadraticCurveTo(r[0] + r[2] / 2, yy - 6, r[0] + r[2] - 10, yy + Math.sin(t * 3 + k + 1) * 2); x.stroke(); } }
+    for (const w of hole.walls) { x.fillStyle = "#0003"; x.fillRect(w[0] + 3, w[1] + 4, w[2], w[3]); x.fillStyle = "#a0662e"; x.beginPath(); x.roundRect(w[0], w[1], w[2], w[3], 5); x.fill(); x.fillStyle = "#c48448"; x.fillRect(w[0] + 2, w[1] + 2, w[2] - 4, 4); }
+    for (const b of hole.bump) { b.hit = Math.max(0, (b.hit || 0) - dt); const rr = b[2] * (1 + b.hit * 0.5); x.fillStyle = "#0003"; x.beginPath(); x.arc(b[0] + 3, b[1] + 4, rr, 0, 7); x.fill(); x.fillStyle = "#ff4f7b"; x.beginPath(); x.arc(b[0], b[1], rr, 0, 7); x.fill(); x.fillStyle = "#ffffff66"; x.beginPath(); x.arc(b[0] - rr * 0.3, b[1] - rr * 0.3, rr * 0.35, 0, 7); x.fill(); }
+    x.fillStyle = "#1a1a1a"; x.beginPath(); x.arc(hole.cup[0], hole.cup[1], 10, 0, 7); x.fill();
+    x.fillStyle = "#555"; x.fillRect(hole.cup[0] - 1, hole.cup[1] - 52, 3, 52);
+    x.fillStyle = "#ff4f7b"; x.beginPath(); x.moveTo(hole.cup[0] + 2, hole.cup[1] - 52); x.lineTo(hole.cup[0] + 26 + Math.sin(t * 5) * 3, hole.cup[1] - 44); x.lineTo(hole.cup[0] + 2, hole.cup[1] - 36); x.fill();
+    for (const r of ripple) { r.life -= dt; r.r += 30 * dt; x.strokeStyle = `rgba(255,255,255,${Math.max(0, r.life)})`; x.lineWidth = 2; x.beginPath(); x.arc(r.x, r.y, r.r, 0, 7); x.stroke(); }
+    ripple = ripple.filter((r) => r.life > 0);
+    if (state === "play" && !moving() && !sinking) {
+      let a = aimA, p = 0.25;
+      if (drag) { a = Math.atan2(drag.sy - drag.y, drag.sx - drag.x); p = Math.min(1, Math.hypot(drag.sx - drag.x, drag.sy - drag.y) / (140 * scale) * 1); }
+      else if (charging) p = pow;
+      x.strokeStyle = `hsl(${120 - p * 120},90%,55%)`; x.lineWidth = 4; x.setLineDash([8, 8]); x.lineDashOffset = -t * 30;
+      x.beginPath(); x.moveTo(ball.x, ball.y); x.lineTo(ball.x + Math.cos(a) * (30 + p * 140), ball.y + Math.sin(a) * (30 + p * 140)); x.stroke(); x.setLineDash([]);
+    }
+    x.fillStyle = "#0004"; x.beginPath(); x.arc(ball.x + 2, ball.y + 3, ball.r * ball.z, 0, 7); x.fill();
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(ball.x, ball.y, ball.r * ball.z, 0, 7); x.fill();
+    x.fillStyle = "#0009"; x.beginPath(); x.roundRect(30, 30, VW - 60, 34, 12); x.fill();
+    x.fillStyle = "#fff"; x.font = "800 15px system-ui"; x.textAlign = "center"; x.fillText(`Hole ${hi + 1}/9 · Par ${hole.par} · Strokes ${strokes}${best ? ` · Best ${best}` : ""}`, VW / 2, 52);
+    if (flash) { flash.life -= dt; x.globalAlpha = Math.max(0, Math.min(1, flash.life)); x.font = "900 34px system-ui"; x.lineWidth = 6; x.strokeStyle = "#0008"; x.strokeText(flash.text, VW / 2, VH / 2); x.fillStyle = "#ffd23f"; x.fillText(flash.text, VW / 2, VH / 2); x.globalAlpha = 1; if (flash.life <= 0) flash = null; }
+  }
+  function loop(now) { const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  addEventListener("pointerdown", (e) => { if (state !== "play") return start(); if (!moving() && !sinking) drag = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY }; });
+  addEventListener("pointermove", (e) => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; } });
+  addEventListener("pointerup", () => { if (!drag) return; const dx = drag.sx - drag.x, dy = drag.sy - drag.y, p = Math.min(1, Math.hypot(dx, dy) / (140 * scale)); aimA = Math.atan2(dy, dx); drag = null; if (p > 0.05) putt(Math.cos(aimA) * p * 900, Math.sin(aimA) * p * 900); });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) e.preventDefault();
+    if (state !== "play") { if (k === " " || k === "enter") start(); return; }
+    if (k === "arrowleft" || k === "a") aimA -= 0.06; if (k === "arrowright" || k === "d") aimA += 0.06;
+    if (k === " " && !e.repeat && !moving() && !sinking) { charging = true; pow = 0; }
+  });
+  addEventListener("keyup", (e) => { if (e.key === " " && charging) { charging = false; putt(Math.cos(aimA) * pow * 900, Math.sin(aimA) * pow * 900); } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

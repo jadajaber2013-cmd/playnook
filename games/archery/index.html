@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Archery</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #a5d8ff; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🏹 Archery<small>Drag back anywhere to draw the bow, aim, and let go to shoot.<br>Keyboard: ↑ ↓ aim, hold Space to draw, release to shoot.<br>Watch the wind! 10 arrows. Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const ARROWS = 10, G = 520;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, S, arrow, stuck, score, shot, wind, tdist, state = "menu", last = 0, drag = null, kA = -0.08, kP = 0, charging = false, pop = null, t = 0, best = 0, cam = 0;
+  try { best = +localStorage.getItem("archery-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; S = Math.min(W / 900, H / 520); c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  const ground = () => 440; // world units
+  const archer = { x: 80, y: 360 };
+  function newRound() { wind = (Math.random() - 0.5) * (40 + shot * 9); tdist = 520 + shot * 45; arrow = null; cam = 0; }
+  function start() { score = 0; shot = 0; stuck = []; pop = null; newRound(); state = "play"; msg.hidden = true; }
+  const target = () => ({ x: tdist, y: 330, r: 42 });
+  function fire(angle, power) {
+    if (arrow || pop) return;
+    const sp = 360 + power * 560;
+    arrow = { x: archer.x + 30, y: archer.y - 30, vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, live: true };
+  }
+  function update(dt) {
+    t += dt;
+    if (charging) kP = Math.min(1, kP + dt * 0.8);
+    if (pop) { pop.l -= dt; if (pop.l <= 0) { pop = null; shot++; if (shot >= ARROWS) return end(); newRound(); } return; }
+    if (!arrow || !arrow.live) return;
+    const tg = target(), steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const sdt = dt / steps, px = arrow.x;
+      arrow.vy += G * sdt; arrow.vx += wind * sdt * 0.6; arrow.x += arrow.vx * sdt; arrow.y += arrow.vy * sdt;
+      if (px < tg.x && arrow.x >= tg.x) {
+        const off = Math.abs(arrow.y - tg.y);
+        if (off <= tg.r) { const pts = Math.max(1, 10 - Math.floor(off / tg.r * 10)); score += pts; arrow.live = false; arrow.x = tg.x; stuck.push({ y: arrow.y - tg.y, shot }); pop = { t: pts === 10 ? "🎯 BULLSEYE! 10" : `+${pts}`, l: 1.5 }; return; }
+      }
+      if (arrow.y > ground() || arrow.x > tdist + 400) { arrow.live = false; pop = { t: "Miss!", l: 1.2 }; return; }
+    }
+    cam = Math.max(0, Math.min(tdist - 600, arrow.x - 300));
+  }
+  function end() {
+    state = "over";
+    if (score > best) { best = score; try { localStorage.setItem("archery-best", best); } catch (e) {} }
+    show("🏹 Round over!", `Score: ${score} / 100 · Best: ${best}<br>Press Space or tap to shoot again`);
+  }
+  function aimFromDrag() { const dx = drag.sx - drag.x, dy = drag.sy - drag.y; return [Math.atan2(dy, Math.max(10, dx)), Math.min(1, Math.hypot(dx, dy) / (220 * S))]; }
+  function draw(dt) {
+    const fit = Math.min(1, W / ((tdist || 520) + 160) / S * 0.98);
+    const sk = x.createLinearGradient(0, 0, 0, H); sk.addColorStop(0, "#74c0fc"); sk.addColorStop(1, "#e7f5ff"); x.fillStyle = sk; x.fillRect(0, 0, W, H);
+    x.save(); const z = S * fit; x.translate(0, H - ground() * z - 30 * S * fit - (H - 520 * S) * 0.2); x.scale(z, z);
+    x.fillStyle = "#ffffffcc"; for (let i = 0; i < 5; i++) { const cx = ((i * 260 + t * 10) % 1500) - 100; x.beginPath(); x.arc(cx, 60 + (i % 2) * 40, 30, 0, 7); x.arc(cx + 34, 50 + (i % 2) * 40, 38, 0, 7); x.arc(cx + 70, 62 + (i % 2) * 40, 28, 0, 7); x.fill(); }
+    x.fillStyle = "#8ce99a"; x.beginPath(); x.moveTo(-100, ground()); for (let i = -100; i < 1600; i += 50) x.lineTo(i, ground() - 40 - Math.sin(i / 120) * 30); x.lineTo(1600, ground()); x.fill();
+    x.fillStyle = "#51cf66"; x.fillRect(-100, ground(), 1800, 400);
+    if (wind !== undefined) {
+      const tg = target();
+      x.fillStyle = "#8b5a2b"; x.fillRect(tg.x - 4, tg.y, 8, ground() - tg.y); x.fillRect(tg.x - 30, ground() - 6, 60, 6);
+      const rings = ["#fff", "#222", "#4dabf7", "#ff5d73", "#ffd23f"];
+      for (let i = 0; i < 5; i++) { x.fillStyle = rings[i]; x.beginPath(); x.ellipse(tg.x, tg.y, 12 - i * 1.5, tg.r * (1 - i / 5), 0, 0, 7); x.fill(); }
+      for (const s of stuck) if (s.shot === shot) { x.strokeStyle = "#5c3d1e"; x.lineWidth = 3; x.beginPath(); x.moveTo(tg.x, tg.y + s.y); x.lineTo(tg.x - 34, tg.y + s.y + 4); x.stroke(); }
+      // flag
+      x.fillStyle = "#666"; x.fillRect(tg.x - 120, 250, 4, ground() - 250);
+      const fl = Math.max(-1, Math.min(1, wind / 60)); x.fillStyle = "#ff4f7b"; x.beginPath(); x.moveTo(tg.x - 118, 250); x.lineTo(tg.x - 118 + fl * 50 + Math.sin(t * 8) * 4, 262); x.lineTo(tg.x - 118, 274); x.fill();
+    }
+    // archer
+    x.save(); x.translate(archer.x, archer.y);
+    let ang = kA, pw = kP; if (drag) [ang, pw] = aimFromDrag();
+    x.strokeStyle = "#5a3b22"; x.lineWidth = 7; x.lineCap = "round"; x.beginPath(); x.moveTo(0, 0); x.lineTo(-8, 70); x.moveTo(0, 0); x.lineTo(14, 70); x.stroke();
+    x.fillStyle = "#2b8a3e"; x.beginPath(); x.roundRect(-12, -46, 24, 50, 8); x.fill();
+    x.fillStyle = "#e0b088"; x.beginPath(); x.arc(0, -58, 13, 0, 7); x.fill(); x.fillStyle = "#2b8a3e"; x.beginPath(); x.moveTo(-14, -60); x.lineTo(16, -66); x.lineTo(-4, -84); x.fill();
+    x.save(); x.translate(4, -30); x.rotate(ang);
+    x.strokeStyle = "#8b5a2b"; x.lineWidth = 5; x.beginPath(); x.arc(26, 0, 34, -1.2, 1.2); x.stroke();
+    const pull = (drag || charging) && !arrow && !pop ? pw * 30 : 0;
+    x.strokeStyle = "#ddd"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(26 + Math.cos(-1.2) * 34, Math.sin(-1.2) * 34); x.lineTo(14 - pull, 0); x.lineTo(26 + Math.cos(1.2) * 34, Math.sin(1.2) * 34); x.stroke();
+    if (!arrow && !pop) { x.strokeStyle = "#5c3d1e"; x.lineWidth = 3; x.beginPath(); x.moveTo(14 - pull, 0); x.lineTo(70 - pull, 0); x.stroke(); x.fillStyle = "#888"; x.beginPath(); x.moveTo(70 - pull, -4); x.lineTo(80 - pull, 0); x.lineTo(70 - pull, 4); x.fill(); }
+    x.restore();
+    x.strokeStyle = "#e0b088"; x.lineWidth = 6; x.beginPath(); x.moveTo(0, -36); x.lineTo(4 + Math.cos(ang) * 40, -30 + Math.sin(ang) * 40); x.stroke();
+    x.restore();
+    if ((drag || charging) && !arrow && !pop) {
+      let px = archer.x + 30, py = archer.y - 30, sp = 360 + pw * 560, vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
+      x.fillStyle = "#ffffffcc"; for (let i = 0; i < 14; i++) { for (let k = 0; k < 4; k++) { vy += G * 0.015; px += vx * 0.015; py += vy * 0.015; } x.beginPath(); x.arc(px, py, 3, 0, 7); x.fill(); }
+    }
+    if (arrow) { const a = Math.atan2(arrow.vy, arrow.vx); x.save(); x.translate(arrow.x, arrow.y); x.rotate(arrow.live ? a : 0.1); x.strokeStyle = "#5c3d1e"; x.lineWidth = 3; x.beginPath(); x.moveTo(-40, 0); x.lineTo(0, 0); x.stroke(); x.fillStyle = "#888"; x.beginPath(); x.moveTo(0, -4); x.lineTo(10, 0); x.lineTo(0, 4); x.fill(); x.fillStyle = "#ff4f7b"; x.fillRect(-42, -4, 8, 8); x.restore(); }
+    x.restore();
+    if (wind !== undefined && state !== "menu") {
+      x.fillStyle = "#0008"; x.beginPath(); x.roundRect(10, 10, 230, 62, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 20px system-ui"; x.textAlign = "left"; x.fillText(`🎯 ${score}   🏹 ${Math.max(0, ARROWS - shot)} left`, 22, 36);
+      x.font = "700 14px system-ui"; x.fillText(`Wind ${wind > 0 ? "→" : "←"} ${Math.abs(wind / 6).toFixed(1)}   Best ${best}`, 22, 58);
+      if (pop) { x.globalAlpha = Math.min(1, pop.l * 1.5); x.font = `900 ${Math.min(52, W / 9)}px system-ui`; x.textAlign = "center"; x.fillStyle = "#ffd23f"; x.strokeStyle = "#0008"; x.lineWidth = 7; x.strokeText(pop.t, W / 2, H * 0.3); x.fillText(pop.t, W / 2, H * 0.3); x.globalAlpha = 1; }
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); else t += dt; draw(dt); requestAnimationFrame(loop); }
+  addEventListener("pointerdown", (e) => { if (state !== "play") return start(); if (!arrow && !pop) drag = { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY }; });
+  addEventListener("pointermove", (e) => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; } });
+  addEventListener("pointerup", () => { if (!drag) return; const [a, p] = aimFromDrag(); drag = null; if (p > 0.08) { kA = a; fire(a, p); } });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowup", "arrowdown", " "].includes(k)) e.preventDefault();
+    if (state !== "play") { if (k === " " || k === "enter") start(); return; }
+    if (k === "arrowup" || k === "w") kA = Math.max(-1.2, kA - 0.03); if (k === "arrowdown" || k === "s") kA = Math.min(0.5, kA + 0.03);
+    if (k === " " && !e.repeat && !arrow && !pop) { charging = true; kP = 0; }
+  });
+  addEventListener("keyup", (e) => { if (e.key === " " && charging) { charging = false; fire(kA, kP); kP = 0; } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

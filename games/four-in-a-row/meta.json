@@ -1,0 +1,21 @@
+{
+  "title": "Four in a Row",
+  "category": "Strategy",
+  "description": "Drop your discs into the grid and get four in a row — across, down or diagonally — before the computer does. Three difficulty levels.",
+  "instructions": [
+    "Click or tap a column to drop a disc.",
+    "Keyboard: Left and Right pick a column, Space or Enter drops.",
+    "Number keys 1–7 drop into that column.",
+    "Connect four of your discs to win."
+  ],
+  "tags": [
+    "connect",
+    "board game",
+    "vs computer",
+    "classic"
+  ],
+  "added": "2026-10-23",
+  "popularity": 85,
+  "license": "Original",
+  "source": "Original work"
+}

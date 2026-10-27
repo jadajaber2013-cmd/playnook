@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Asteroid Dodge</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070418; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; top: 10px; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 20px; pointer-events: none; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 28px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 500; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="msg"><div>🚀 Asteroid Dodge<small>Steer with ← → / A D, or hold the left or right side of the screen.<br>Grab ⭐ for bonus points. Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const c = document.getElementById("c"), x = c.getContext("2d"), hud = document.getElementById("hud"), msg = document.getElementById("msg");
+  let W, H, ship, rocks, stars, bg, score, best = 0, state = "menu", t = 0, keys = {}, touchDir = 0, last = 0, scoreTimer = 0;
+  try { best = +localStorage.getItem("asteroid-dodge-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  bg = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 1.6 + 0.3 }));
+  function reset() { ship = { x: W / 2, y: H - 70, vx: 0 }; rocks = []; stars = []; score = 0; t = 0; }
+  function show(a, b) { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; }
+  function start() { reset(); state = "play"; msg.hidden = true; }
+  function over() {
+    state = "over";
+    if (score > best) { best = score; try { localStorage.setItem("asteroid-dodge-best", best); } catch (e) {} }
+    show("💥 Crash!", `Score: ${score} · Best: ${best}<br>Press Space or tap to try again`);
+  }
+  function pause() { if (state === "play") { state = "paused"; show("Paused", "Press P or tap to continue"); } else if (state === "paused") { state = "play"; msg.hidden = true; } }
+
+  function update(dt) {
+    t += dt;
+    const dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0) || touchDir;
+    ship.vx += dir * 2600 * dt; ship.vx *= Math.pow(0.0008, dt);
+    ship.x = Math.max(20, Math.min(W - 20, ship.x + ship.vx * dt));
+    ship.y = H - 70;
+    const level = 1 + t / 12;
+    if (Math.random() < dt * (1.6 + level * 1.1) * Math.max(1, W / 700)) {
+      const r = 12 + Math.random() * 26;
+      rocks.push({ x: Math.random() * W, y: -r, r, vy: (140 + Math.random() * 120) * Math.sqrt(level), vx: (Math.random() - 0.5) * 60, a: 0, va: (Math.random() - 0.5) * 3, pts: Array.from({ length: 9 }, () => 0.75 + Math.random() * 0.3) });
+    }
+    if (Math.random() < dt * 0.35) stars.push({ x: 20 + Math.random() * (W - 40), y: -20, vy: 160 });
+    for (const r of rocks) {
+      r.y += r.vy * dt; r.x += r.vx * dt; r.a += r.va * dt;
+      if (Math.hypot(r.x - ship.x, r.y - ship.y) < r.r * 0.85 + 12) return over();
+    }
+    for (const s of stars) {
+      s.y += s.vy * dt;
+      if (!s.got && Math.hypot(s.x - ship.x, s.y - ship.y) < 30) { s.got = true; score += 25; }
+    }
+    rocks = rocks.filter((r) => r.y < H + 60);
+    stars = stars.filter((s) => s.y < H + 30 && !s.got);
+    scoreTimer += dt;
+    while (scoreTimer > 0.1) { scoreTimer -= 0.1; score++; }
+  }
+
+  function draw() {
+    x.fillStyle = "#070418"; x.fillRect(0, 0, W, H);
+    for (const s of bg) {
+      s.y += s.s * 0.0009 * (state === "play" ? 3 : 1); if (s.y > 1) s.y = 0;
+      x.fillStyle = `rgba(255,255,255,${0.3 + s.s / 3})`; x.fillRect(s.x * W, s.y * H, s.s, s.s);
+    }
+    for (const s of stars) {
+      x.fillStyle = "#ffd23f"; x.beginPath();
+      for (let i = 0; i < 10; i++) { const a = Math.PI * i / 5 - Math.PI / 2 + t * 2, rr = i % 2 ? 6 : 14; x.lineTo(s.x + Math.cos(a) * rr, s.y + Math.sin(a) * rr); }
+      x.fill();
+    }
+    for (const r of rocks) {
+      x.save(); x.translate(r.x, r.y); x.rotate(r.a);
+      x.fillStyle = "#8a7a6e"; x.strokeStyle = "#5c4f45"; x.lineWidth = 3; x.beginPath();
+      r.pts.forEach((p, i) => { const a = (i / r.pts.length) * Math.PI * 2; x.lineTo(Math.cos(a) * r.r * p, Math.sin(a) * r.r * p); });
+      x.closePath(); x.fill(); x.stroke();
+      x.fillStyle = "#6e6158"; x.beginPath(); x.arc(r.r * 0.25, -r.r * 0.2, r.r * 0.2, 0, 7); x.fill();
+      x.restore();
+    }
+    if (ship) {
+      x.save(); x.translate(ship.x, ship.y); x.rotate(ship.vx / 2500);
+      x.fillStyle = "#ff9f1c"; x.beginPath(); x.moveTo(-7, 18); x.lineTo(0, 30 + Math.random() * 10); x.lineTo(7, 18); x.fill();
+      x.fillStyle = "#e8ecff"; x.beginPath(); x.moveTo(0, -24); x.quadraticCurveTo(14, -6, 11, 18); x.lineTo(-11, 18); x.quadraticCurveTo(-14, -6, 0, -24); x.fill();
+      x.fillStyle = "#ff5d73"; x.beginPath(); x.moveTo(-11, 6); x.lineTo(-20, 22); x.lineTo(-10, 18); x.fill(); x.beginPath(); x.moveTo(11, 6); x.lineTo(20, 22); x.lineTo(10, 18); x.fill();
+      x.fillStyle = "#3a86ff"; x.beginPath(); x.arc(0, -4, 5, 0, 7); x.fill();
+      x.restore();
+    }
+    hud.textContent = state === "menu" ? `Best: ${best}` : `Score: ${score}   Best: ${best}`;
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now;
+    if (state === "play") update(dt);
+    draw(); requestAnimationFrame(loop);
+  }
+
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || state === "over") start(); else if (state === "paused") pause(); }
+    if (k === "p" || k === "escape") pause();
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  addEventListener("pointerdown", (e) => {
+    if (state === "menu" || state === "over") return start();
+    if (state === "paused") return pause();
+    touchDir = e.clientX < W / 2 ? -1 : 1;
+  });
+  addEventListener("pointermove", (e) => { if (touchDir && e.buttons) touchDir = e.clientX < W / 2 ? -1 : 1; });
+  addEventListener("pointerup", () => { touchDir = 0; });
+  addEventListener("pointercancel", () => { touchDir = 0; });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") pause(); });
+  reset(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "title": "Brick Bash",
+  "category": "Arcade",
+  "description": "Bounce the ball off your paddle and smash every brick on the screen. Each level adds more rows and tougher bricks that need two hits.",
+  "instructions": [
+    "Move the paddle with the arrow keys, A and D, or the mouse.",
+    "On touch screens, drag your finger to move the paddle.",
+    "Press Space or tap to launch the ball.",
+    "Clear all bricks to reach the next level. Press P to pause."
+  ],
+  "tags": [
+    "bricks",
+    "paddle",
+    "ball",
+    "retro"
+  ],
+  "added": "2026-10-08",
+  "popularity": 88,
+  "license": "Original",
+  "source": "Original work"
+}

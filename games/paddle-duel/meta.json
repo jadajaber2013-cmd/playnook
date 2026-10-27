@@ -1,0 +1,21 @@
+{
+  "title": "Paddle Duel",
+  "category": "Arcade",
+  "description": "A classic table-tennis style duel against the computer. Angle your shots off the edges of the paddle and be the first to score 7 points.",
+  "instructions": [
+    "Move your paddle with the arrow keys or W and S.",
+    "On touch screens, drag up and down on your side.",
+    "Hitting the ball with the edge of the paddle sends it at a sharper angle.",
+    "First to 7 wins."
+  ],
+  "tags": [
+    "paddle",
+    "retro",
+    "vs computer",
+    "duel"
+  ],
+  "added": "2026-10-02",
+  "popularity": 72,
+  "license": "Original",
+  "source": "Original work"
+}

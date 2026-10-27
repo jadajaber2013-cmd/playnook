@@ -1,0 +1,21 @@
+{
+  "title": "Penalty Kick",
+  "category": "Sports",
+  "description": "Step up to the spot and beat the goalkeeper! Aim your shot, time the power bar and curl the ball into the corner. Then dive to save the keeper's shots.",
+  "instructions": [
+    "Shooting: click or tap where you want to aim, then stop the power bar.",
+    "Keyboard: arrow keys aim, Space shoots.",
+    "Saving: click, tap or press an arrow key to dive.",
+    "Win the shoot-out over five rounds."
+  ],
+  "tags": [
+    "football",
+    "soccer",
+    "penalty",
+    "shoot-out"
+  ],
+  "added": "2026-09-11",
+  "popularity": 88,
+  "license": "Original",
+  "source": "Original work"
+}

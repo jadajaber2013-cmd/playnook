@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Word Scramble</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #0f9b8e, #1e5f9e); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 12px; box-sizing: border-box; text-align: center; }
+  #hud { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #hud span { background: #ffffff22; padding: 8px 14px; border-radius: 999px; }
+  #bar { width: min(420px, 90vw); height: 12px; background: #ffffff22; border-radius: 6px; overflow: hidden; }
+  #bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd23f, #ff9f1c); transition: width .3s linear; }
+  #cat { font-size: 15px; opacity: .85; font-weight: 700; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; min-height: var(--t); }
+  .tile { width: var(--t); height: var(--t); border-radius: 12px; display: grid; place-items: center; font-size: calc(var(--t) * .55); font-weight: 900; text-transform: uppercase; border: 0; font-family: inherit; }
+  #letters .tile { background: #fff; color: #1e5f9e; box-shadow: 0 5px 0 #b9d6f0; cursor: pointer; transition: transform .15s cubic-bezier(.34,1.56,.64,1), opacity .2s; animation: drop .4s cubic-bezier(.34,1.56,.64,1) both; }
+  #letters .tile:hover { transform: translateY(-3px) rotate(-3deg); }
+  #letters .tile.used { opacity: .15; transform: scale(.8); pointer-events: none; }
+  @keyframes drop { from { transform: translateY(-40px) scale(.5); opacity: 0; } }
+  #answer .tile { background: #ffffff22; box-shadow: inset 0 -3px 0 #0002; color: #fff; }
+  #answer .tile.f { background: #ffd23f; color: #3a2400; animation: pop .25s cubic-bezier(.34,1.56,.64,1); }
+  #answer .tile.hint { background: #9be7ff; color: #0b3b5c; }
+  #answer.bad { animation: shake .4s; } #answer.good .tile { background: #51cf66; color: #fff; animation: jump .5s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes pop { from { transform: scale(.4); } }
+  @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+  @keyframes jump { 50% { transform: translateY(-18px); } }
+  #tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #tools button, #msg button { border: 0; border-radius: 999px; padding: 10px 18px; background: #fff; color: #1e5f9e; font: inherit; font-weight: 900; cursor: pointer; box-shadow: 0 4px 0 #b9d6f0; }
+  #tools button:active { transform: translateY(3px); box-shadow: none; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #0009; font-size: 32px; font-weight: 900; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin: 10px 0 16px; line-height: 1.5; }
+  #msg button { background: #ffd23f; color: #3a2400; box-shadow: none; font-size: 18px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="score">⭐ 0</span><span id="streak">🔥 0</span><span id="best">🏆 0</span></div>
+  <div id="bar"><i id="fill" style="width:100%"></i></div>
+  <div id="cat"></div>
+  <div class="row" id="answer"></div>
+  <div class="row" id="letters"></div>
+  <div id="tools"><button type="button" id="back">⌫ Undo</button><button type="button" id="shuffle">🔀 Shuffle</button><button type="button" id="hint">💡 Hint</button><button type="button" id="skip">⏭ Skip</button></div>
+</div>
+<div id="msg"><div>🔤 Word Scramble<small>Unscramble the letters to find the word.<br>Tap the letters or just type. Each word adds time!</small><button type="button" id="go">Start</button></div></div>
+<script>
+(() => {
+  const WORDS = {
+    "Animals": "tiger,zebra,rabbit,monkey,parrot,turtle,dolphin,penguin,giraffe,kitten,puppy,horse,camel,koala,panda,eagle,shark,whale,otter,beaver,donkey,hamster,lizard,spider,lobster,octopus,squirrel,leopard,gorilla,flamingo",
+    "Food": "apple,banana,cherry,grape,lemon,mango,orange,peach,pizza,pasta,bread,butter,cheese,cookie,donut,honey,muffin,noodle,pancake,popcorn,salad,sandwich,tomato,carrot,potato,pepper,waffle,yogurt,cereal,pretzel",
+    "Home": "chair,table,sofa,lamp,pillow,blanket,window,carpet,mirror,kitchen,garden,garage,shower,bottle,candle,basket,clock,drawer,ladder,curtain",
+    "Nature": "river,ocean,forest,flower,meadow,island,valley,desert,cloud,rainbow,thunder,planet,comet,sunset,breeze,pebble,canyon,glacier,volcano,jungle",
+    "Fun": "rocket,robot,castle,dragon,pirate,wizard,puzzle,guitar,drums,kite,balloon,camera,crayon,marble,sticker,treasure,unicorn,bubble,circus,trophy"
+  };
+  const ALL = Object.entries(WORDS).flatMap(([cat, w]) => w.split(",").map((word) => ({ word, cat })));
+  const ansEl = document.getElementById("answer"), letEl = document.getElementById("letters"), msg = document.getElementById("msg");
+  let cur, picked, hints, score, streak, timeLeft, timer, used, best = 0, lock = false;
+  try { best = +localStorage.getItem("word-scramble-best") || 0; } catch (e) {}
+  document.getElementById("best").textContent = "🏆 " + best;
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  function size() { const n = cur ? cur.word.length : 6; document.documentElement.style.setProperty("--t", Math.floor(Math.min(60, (innerWidth - 30) / n - 8)) + "px"); }
+
+  function start() { score = 0; streak = 0; timeLeft = 60; used = new Set(); msg.hidden = true; clearInterval(timer); timer = setInterval(tick, 250); next(); }
+  function tick() {
+    timeLeft -= 0.25; document.getElementById("fill").style.width = Math.max(0, Math.min(100, timeLeft / 60 * 100)) + "%";
+    if (timeLeft <= 0) { clearInterval(timer); end(); }
+  }
+  function next() {
+    let pool = ALL.filter((w) => !used.has(w.word) && w.word.length <= Math.min(8, 4 + Math.floor(score / 40)));
+    if (!pool.length) pool = ALL;
+    cur = pool[Math.floor(Math.random() * pool.length)]; used.add(cur.word);
+    let letters; do { letters = shuffle(cur.word.split("")); } while (letters.join("") === cur.word);
+    picked = []; hints = 0; lock = false; size();
+    document.getElementById("cat").textContent = "Category: " + cur.cat;
+    letEl.innerHTML = "";
+    letters.forEach((ch, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "tile"; b.textContent = ch; b.dataset.ch = ch; b.style.animationDelay = i * 40 + "ms";
+      b.addEventListener("click", () => pick(b));
+      letEl.appendChild(b);
+    });
+    render(); hud();
+  }
+  function pick(b) {
+    if (lock || b.classList.contains("used") || picked.length >= cur.word.length) return;
+    b.classList.add("used"); picked.push(b); render();
+    if (picked.length === cur.word.length) check();
+  }
+  function render() {
+    ansEl.className = "row"; ansEl.innerHTML = "";
+    for (let i = 0; i < cur.word.length; i++) {
+      const d = document.createElement("div"); d.className = "tile" + (picked[i] ? " f" : "") + (i < hints ? " hint" : "");
+      d.textContent = picked[i] ? picked[i].dataset.ch : ""; ansEl.appendChild(d);
+    }
+  }
+  function check() {
+    const guess = picked.map((b) => b.dataset.ch).join("");
+    if (guess === cur.word) {
+      lock = true; streak++; const pts = cur.word.length * 5 + Math.min(streak, 10) * 2 - hints * 5; score += Math.max(5, pts);
+      timeLeft = Math.min(90, timeLeft + 6 + Math.min(streak, 5)); hud();
+      requestAnimationFrame(() => { ansEl.classList.add("good"); [...ansEl.children].forEach((t, i) => (t.style.animationDelay = i * 50 + "ms")); });
+      setTimeout(next, 900);
+    } else {
+      streak = 0; hud(); ansEl.classList.add("bad");
+      setTimeout(() => { while (picked.length > hints) picked.pop().classList.remove("used"); render(); }, 450);
+    }
+  }
+  function undo() { if (lock || picked.length <= hints) return; picked.pop().classList.remove("used"); render(); }
+  function hint() {
+    if (lock || hints >= cur.word.length - 1) return;
+    while (picked.length > hints) picked.pop().classList.remove("used");
+    const ch = cur.word[hints], b = [...letEl.children].find((x) => !x.classList.contains("used") && x.dataset.ch === ch);
+    if (b) { b.classList.add("used"); picked.push(b); hints++; timeLeft -= 3; render(); if (picked.length === cur.word.length) check(); }
+  }
+  function hud() { document.getElementById("score").textContent = "⭐ " + score; document.getElementById("streak").textContent = "🔥 " + streak; }
+  function end() {
+    lock = true;
+    if (score > best) { best = score; try { localStorage.setItem("word-scramble-best", best); } catch (e) {} document.getElementById("best").textContent = "🏆 " + best; }
+    msg.innerHTML = `<div>⏰ Time's up!<small>The word was <b>${cur.word.toUpperCase()}</b><br>Score: ${score} · Best: ${best}</small><button type="button" id="go">Play again</button></div>`;
+    msg.hidden = false; document.getElementById("go").onclick = start;
+  }
+  addEventListener("keydown", (e) => {
+    if (!msg.hidden) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); start(); } return; }
+    const k = e.key.toLowerCase();
+    if (/^[a-z]$/.test(k)) { const b = [...letEl.children].find((x) => !x.classList.contains("used") && x.dataset.ch === k); if (b) pick(b); }
+    else if (k === "backspace") { e.preventDefault(); undo(); }
+    else if (k === "?" || k === "/") hint();
+    else if (k === " ") { e.preventDefault(); [...letEl.children].forEach((x) => x.style.animationDelay = "0ms"); }
+  });
+  document.getElementById("back").onclick = undo;
+  document.getElementById("hint").onclick = hint;
+  document.getElementById("skip").onclick = () => { if (!lock) { streak = 0; timeLeft -= 5; next(); } };
+  document.getElementById("shuffle").onclick = () => { const kids = [...letEl.children]; shuffle(kids).forEach((k) => letEl.appendChild(k)); };
+  document.getElementById("go").onclick = start;
+  addEventListener("resize", size);
+})();
+</script>
+</body>
+</html>

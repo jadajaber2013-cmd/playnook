@@ -1,0 +1,21 @@
+{
+  "title": "Desert Dash",
+  "category": "Arcade",
+  "description": "A speedy little fox races across the desert. Jump over cacti and duck under swooping birds in this endless runner that gets faster and faster.",
+  "instructions": [
+    "Press Space, Up or W to jump.",
+    "Press Down or S to duck.",
+    "On touch screens, tap the top half to jump and the bottom half to duck.",
+    "How far can you run?"
+  ],
+  "tags": [
+    "runner",
+    "endless",
+    "jump",
+    "fox"
+  ],
+  "added": "2026-10-22",
+  "popularity": 87,
+  "license": "Original",
+  "source": "Original work"
+}

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>{{TITLE}}</title>
+<style>
+  /* The game fills the whole frame. Keep these rules so it works on phones. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #14102b; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; top: 10px; left: 0; right: 0; text-align: center; font-weight: 800; font-size: 20px; pointer-events: none; text-shadow: 0 2px 4px #0008; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 22px; font-weight: 700; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 15px; font-weight: 400; opacity: .85; margin-top: 8px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">Score: 0</div>
+<div id="msg"><div>{{TITLE}}<small>Tap, click or press Space to start</small></div></div>
+<script>
+// =====================================================================
+//  STARTER GAME — "catch the falling stars".
+//  Replace everything in this file with your own game, or build on it.
+//  Rules every game should follow are in new-game-prompt.md.
+// =====================================================================
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+const hud = document.getElementById("hud"), msg = document.getElementById("msg");
+const BEST_KEY = "{{TITLE}}-best"; // high score saved in this browser
+let W, H, player, stars, score, lives, running = false, paused = false, keys = {}, touchX = null, last = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+function reset() {
+  player = { x: W / 2, w: Math.max(70, W * 0.14), h: 16 };
+  stars = []; score = 0; lives = 3;
+}
+
+function start() { reset(); running = true; paused = false; msg.hidden = true; }
+function gameOver() {
+  running = false;
+  const best = Math.max(score, +localStorage.getItem(BEST_KEY) || 0);
+  localStorage.setItem(BEST_KEY, best);
+  msg.innerHTML = `<div>Game over! Score: ${score}<small>Best: ${best} — tap or press Space to play again</small></div>`;
+  msg.hidden = false;
+}
+
+// ---------- Keyboard ----------
+addEventListener("keydown", (e) => {
+  keys[e.key.toLowerCase()] = true;
+  if ([" ", "arrowleft", "arrowright", "arrowup", "arrowdown"].includes(e.key.toLowerCase())) e.preventDefault();
+  if (e.key === " " && !running) start();
+  if (e.key.toLowerCase() === "p" && running) { paused = !paused; msg.hidden = !paused; msg.innerHTML = "<div>Paused<small>Press P to continue</small></div>"; }
+});
+addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+
+// ---------- Touch / mouse ----------
+canvas.addEventListener("pointerdown", (e) => { touchX = e.clientX; });
+canvas.addEventListener("pointermove", (e) => { if (touchX !== null || e.pointerType === "mouse") touchX = e.clientX; });
+addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") touchX = null; });
+msg.addEventListener("pointerdown", () => { if (!running) start(); else if (paused) { paused = false; msg.hidden = true; } });
+
+// Pause automatically when the player switches tabs.
+document.addEventListener("visibilitychange", () => { if (document.hidden && running) { paused = true; msg.hidden = false; msg.innerHTML = "<div>Paused<small>Tap or press P to continue</small></div>"; } });
+
+// ---------- Game loop ----------
+function update(dt) {
+  const speed = W * 0.9;
+  if (keys["arrowleft"] || keys["a"]) player.x -= speed * dt;
+  if (keys["arrowright"] || keys["d"]) player.x += speed * dt;
+  if (touchX !== null) player.x += (touchX - player.x) * Math.min(1, dt * 12);
+  player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
+
+  if (Math.random() < dt * (1.2 + score / 15)) stars.push({ x: 20 + Math.random() * (W - 40), y: -20, v: H * (0.25 + Math.random() * 0.2 + score / 200) });
+  const py = H - 40;
+  for (const s of stars) {
+    s.y += s.v * dt;
+    if (!s.done && s.y > py - 10 && s.y < py + 16 && Math.abs(s.x - player.x) < player.w / 2 + 10) { s.done = true; score++; }
+    else if (!s.done && s.y > H + 20) { s.done = true; if (--lives <= 0) gameOver(); }
+  }
+  stars = stars.filter((s) => !s.done);
+}
+
+function drawStar(x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (Math.PI * i) / 5 - Math.PI / 2, rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.fill();
+}
+
+function draw() {
+  ctx.fillStyle = "#14102b"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffd23f";
+  for (const s of stars) drawStar(s.x, s.y, 14);
+  ctx.fillStyle = "#7c5cff";
+  ctx.beginPath(); ctx.roundRect(player.x - player.w / 2, H - 40, player.w, player.h, 8); ctx.fill();
+  hud.textContent = `Score: ${score}   ❤️ ${lives}`;
+}
+
+function loop(t) {
+  const dt = Math.min(0.05, (t - last) / 1000 || 0); last = t;
+  if (running && !paused) update(dt);
+  if (player) draw();
+  requestAnimationFrame(loop);
+}
+reset(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

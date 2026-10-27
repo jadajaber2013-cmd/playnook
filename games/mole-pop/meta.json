@@ -1,0 +1,21 @@
+{
+  "title": "Mole Pop",
+  "category": "Arcade",
+  "description": "Moles are popping out of the lawn! Bop as many as you can in 45 seconds, catch the rare golden mole for big points, and don't bop the sleepy hedgehogs.",
+  "instructions": [
+    "Click or tap a mole to bop it.",
+    "Keyboard: number keys 1–9 match the holes (like a phone keypad).",
+    "Golden moles are worth 50 points. Hedgehogs cost 20.",
+    "Score as much as you can before the timer runs out."
+  ],
+  "tags": [
+    "whack",
+    "reflex",
+    "moles",
+    "timer"
+  ],
+  "added": "2026-10-05",
+  "popularity": 80,
+  "license": "Original",
+  "source": "Original work"
+}

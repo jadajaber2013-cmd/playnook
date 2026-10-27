@@ -1,0 +1,23 @@
+{
+  "title": "Pixel Jumper",
+  "category": "Arcade",
+  "description": "Run, jump and squash slimes across three colourful levels in this retro pixel platformer. Collect coins, dodge the spikes and reach the flag at the end of each stage.",
+  "instructions": [
+    "Move left and right with the arrow keys or A and D.",
+    "Jump with Space, the up arrow or W. Hold jump to jump higher.",
+    "On a phone or tablet, use the on-screen ◀ ▶ and jump buttons.",
+    "Jump on top of slimes to squash them. Touching them from the side or landing on spikes sends you back to the start of the level.",
+    "Reach the red flag to finish the level. Press P to pause."
+  ],
+  "tags": [
+    "platformer",
+    "jump",
+    "retro",
+    "pixel",
+    "adventure"
+  ],
+  "added": "2026-10-27",
+  "popularity": 85,
+  "license": "Original",
+  "source": "Original work"
+}

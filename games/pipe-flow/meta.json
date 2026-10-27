@@ -1,0 +1,21 @@
+{
+  "title": "Pipe Flow",
+  "category": "Puzzle",
+  "description": "Rotate the pipe pieces to connect every tile to the water tap. When everything is connected, the water rushes through the whole network.",
+  "instructions": [
+    "Click or tap a pipe to rotate it.",
+    "Keyboard: arrow keys move, Space or Enter rotates.",
+    "Connect every pipe to the tap with no leaks.",
+    "Boards grow bigger as you level up."
+  ],
+  "tags": [
+    "pipes",
+    "rotate",
+    "connect",
+    "relaxing"
+  ],
+  "added": "2026-10-13",
+  "popularity": 68,
+  "license": "Original",
+  "source": "Original work"
+}

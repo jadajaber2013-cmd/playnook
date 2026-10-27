@@ -1,0 +1,21 @@
+{
+  "title": "Shape Sorter",
+  "category": "Kids",
+  "description": "Drag each shape into the hole with the matching shape. Circles, stars, hearts and more — a friendly first puzzle for young players.",
+  "instructions": [
+    "Drag a shape to the matching hole.",
+    "Keyboard: Tab picks a shape, arrow keys move it, Space drops it.",
+    "Matching shapes snap into place with a happy sound.",
+    "Sort them all to finish the level."
+  ],
+  "tags": [
+    "shapes",
+    "sorting",
+    "toddler",
+    "learning"
+  ],
+  "added": "2026-10-09",
+  "popularity": 58,
+  "license": "Original",
+  "source": "Original work"
+}

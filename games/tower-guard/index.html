@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tower Guard</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: #2b5e2b; color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 6px; box-sizing: border-box; }
+  #hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; align-items: center; }
+  #hud span { background: #0004; padding: 6px 12px; border-radius: 999px; }
+  #bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  #bar button { border: 0; border-radius: 14px; padding: 6px 10px; background: #0004; color: #fff; font: inherit; font-weight: 800; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+  #bar button.on { background: #ffd23f; color: #3a2400; }
+  #bar button:disabled { opacity: .4; }
+  #bar small { font-weight: 700; opacity: .85; }
+  canvas { display: block; border-radius: 14px; box-shadow: 0 16px 40px #0007; cursor: pointer; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; text-align: center; font-size: 32px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 600; margin: 10px 0 14px; line-height: 1.5; }
+  #msg button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="gold">💰 120</span><span id="lives">❤️ 20</span><span id="wave">Wave 0/20</span></div>
+  <canvas id="c"></canvas>
+  <div id="bar"></div>
+</div>
+<div id="msg"><div>🏰 Tower Guard<small>Tap the grass to build the selected tower. Tap a tower to upgrade it<br>(long-press or right-click to sell). Press ▶ (or Space) to send the next wave.<br>Keys 1–3 pick a tower, F toggles fast-forward.</small><button type="button" id="go">Defend!</button></div></div>
+<script>
+(() => {
+  const GW = 12, GH = 8, WAVES = 20;
+  const PATH = [[-1, 1], [3, 1], [3, 5], [1, 5], [1, 7], [7, 7], [7, 2], [10, 2], [10, 5], [12, 5]];
+  const TOWERS = [
+    { id: "arrow", name: "Arrow", icon: "🏹", cost: 40, range: 2.4, rate: 0.55, dmg: 9, col: "#8b5a2b" },
+    { id: "cannon", name: "Cannon", icon: "💣", cost: 80, range: 2.1, rate: 1.5, dmg: 26, splash: 0.9, col: "#495057" },
+    { id: "frost", name: "Frost", icon: "❄️", cost: 60, range: 2.0, rate: 0.9, dmg: 4, slow: 0.5, col: "#4dabf7" }
+  ];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg"), bar = document.getElementById("bar");
+  let cell, pathCells, towers, enemies, shots, fx, gold, lives, wave, spawnQ, spawnT, selT = 0, fast = false, state = "menu", t = 0, waveOn = false;
+  // path cells
+  function buildPath() { pathCells = new Set(); for (let i = 0; i < PATH.length - 1; i++) { let [ax, ay] = PATH[i]; const [bx, by] = PATH[i + 1]; while (ax !== bx || ay !== by) { if (ax >= 0 && ax < GW) pathCells.add(ay * GW + ax); ax += Math.sign(bx - ax); ay += Math.sign(by - ay); } if (bx >= 0 && bx < GW) pathCells.add(by * GW + bx); } }
+  buildPath();
+  const segLen = PATH.slice(1).map((p, i) => Math.abs(p[0] - PATH[i][0]) + Math.abs(p[1] - PATH[i][1])), total = segLen.reduce((a, b) => a + b, 0);
+  function posAt(d) { let i = 0; while (i < segLen.length && d > segLen[i]) { d -= segLen[i]; i++; } if (i >= segLen.length) return [PATH[PATH.length - 1][0] + 0.5, PATH[PATH.length - 1][1] + 0.5]; const [ax, ay] = PATH[i], [bx, by] = PATH[i + 1], k = d / segLen[i]; return [ax + (bx - ax) * k + 0.5, ay + (by - ay) * k + 0.5]; }
+  function layout() { cell = Math.floor(Math.min((innerWidth - 16) / GW, (innerHeight - 130) / GH, 70)); const d = Math.min(devicePixelRatio || 1, 2); c.style.width = cell * GW + "px"; c.style.height = cell * GH + "px"; c.width = cell * GW * d; c.height = cell * GH * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", layout); layout();
+  const btns = TOWERS.map((tw, i) => { const b = document.createElement("button"); b.type = "button"; b.innerHTML = `${tw.icon} ${tw.name} <small>💰${tw.cost}</small>`; b.onclick = () => { selT = i; syncBar(); }; bar.appendChild(b); return b; });
+  const waveBtn = document.createElement("button"); waveBtn.type = "button"; waveBtn.textContent = "▶ Next wave"; waveBtn.onclick = sendWave; bar.appendChild(waveBtn);
+  const fastBtn = document.createElement("button"); fastBtn.type = "button"; fastBtn.textContent = "⏩ x2"; fastBtn.onclick = () => { fast = !fast; syncBar(); }; bar.appendChild(fastBtn);
+  function syncBar() { btns.forEach((b, i) => { b.classList.toggle("on", i === selT); b.disabled = gold < TOWERS[i].cost; }); waveBtn.disabled = waveOn || wave >= WAVES; fastBtn.classList.toggle("on", fast); document.getElementById("gold").textContent = "💰 " + gold; document.getElementById("lives").textContent = "❤️ " + lives; document.getElementById("wave").textContent = `Wave ${wave}/${WAVES}`; }
+  function start() { towers = []; enemies = []; shots = []; fx = []; gold = 120; lives = 20; wave = 0; spawnQ = []; waveOn = false; state = "play"; msg.hidden = true; syncBar(); }
+  function sendWave() {
+    if (waveOn || wave >= WAVES || state !== "play") return;
+    wave++; waveOn = true;
+    const n = 6 + wave * 2, hp = 18 + wave * wave * 1.4 + wave * 6;
+    for (let i = 0; i < n; i++) { const big = wave % 5 === 0 && i === n - 1; spawnQ.push({ hp: big ? hp * 8 : hp * (i % 4 === 3 && wave > 3 ? 1.6 : 1), speed: big ? 0.55 : i % 5 === 4 && wave > 2 ? 1.5 : 1, big, gold: big ? 40 : 4 + Math.floor(wave / 3) }); }
+    spawnT = 0; syncBar();
+  }
+  function update(dt) {
+    t += dt;
+    spawnT -= dt;
+    if (spawnQ.length && spawnT <= 0) { const s = spawnQ.shift(); enemies.push({ d: 0, hp: s.hp, max: s.hp, speed: s.speed, big: s.big, gold: s.gold, slowT: 0, hue: (wave * 35) % 360, wob: Math.random() * 6 }); spawnT = 0.7; }
+    for (const e of enemies) {
+      const sp = 1.15 * e.speed * (e.slowT > 0 ? 0.5 : 1); e.slowT -= dt; e.d += sp * dt;
+      if (e.d >= total) { e.dead = true; lives -= e.big ? 5 : 1; fx.push({ text: "-❤️", x: GW - 0.5, y: PATH[PATH.length - 1][1] + 0.5, l: 1 }); if (lives <= 0) return lose(); }
+    }
+    for (const tw of towers) {
+      const T = TOWERS[tw.type], lv = tw.lv; tw.cd -= dt;
+      const range = T.range * (1 + (lv - 1) * 0.15);
+      let target = null, far = -1;
+      for (const e of enemies) { if (e.dead) continue; const [ex, ey] = posAt(e.d); if (Math.hypot(ex - tw.x - 0.5, ey - tw.y - 0.5) <= range && e.d > far) { far = e.d; target = e; } }
+      if (target) { const [ex, ey] = posAt(target.d); tw.ang = Math.atan2(ey - tw.y - 0.5, ex - tw.x - 0.5); }
+      if (target && tw.cd <= 0) { tw.cd = T.rate / (1 + (lv - 1) * 0.25); shots.push({ x: tw.x + 0.5, y: tw.y + 0.5, target, type: tw.type, dmg: T.dmg * (1 + (lv - 1) * 0.7), sp: tw.type === 1 ? 7 : 12 }); tw.kick = 1; }
+      tw.kick = Math.max(0, (tw.kick || 0) - dt * 6);
+    }
+    for (const s of shots) {
+      if (s.target.dead && s.type !== 1) { s.done = true; continue; }
+      const [tx, ty] = posAt(s.target.d), dx = tx - s.x, dy = ty - s.y, dist = Math.hypot(dx, dy), step = s.sp * dt;
+      if (dist <= step) {
+        s.done = true; const T = TOWERS[s.type];
+        if (T.splash) { fx.push({ ring: true, x: tx, y: ty, r: 0.1, l: 0.35 }); for (const e of enemies) { const [ex, ey] = posAt(e.d); if (Math.hypot(ex - tx, ey - ty) < T.splash) hurt(e, s.dmg); } }
+        else { hurt(s.target, s.dmg); if (T.slow) s.target.slowT = 1.5; }
+      } else { s.x += dx / dist * step; s.y += dy / dist * step; }
+    }
+    shots = shots.filter((s) => !s.done);
+    enemies = enemies.filter((e) => !e.dead);
+    if (waveOn && !spawnQ.length && !enemies.length) {
+      waveOn = false; gold += 20 + wave * 3; fx.push({ text: `Wave ${wave} cleared! +${20 + wave * 3}💰`, x: GW / 2, y: GH / 2, l: 1.8, big: true });
+      if (wave >= WAVES) win();
+    }
+    syncBar();
+  }
+  function hurt(e, dmg) { if (e.dead) return; e.hp -= dmg; for (let i = 0; i < 3; i++) { const [ex, ey] = posAt(e.d); fx.push({ x: ex, y: ey, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, l: 0.3, col: `hsl(${e.hue},80%,60%)` }); } if (e.hp <= 0) { e.dead = true; gold += e.gold; const [ex, ey] = posAt(e.d); fx.push({ text: `+${e.gold}`, x: ex, y: ey - 0.3, l: 0.8 }); } }
+  function lose() { state = "over"; msg.innerHTML = `<div>💥 The castle fell!<small>You survived ${wave - 1} wave${wave === 2 ? "" : "s"}.</small><button type="button" id="go">Try again</button></div>`; msg.hidden = false; document.getElementById("go").onclick = start; }
+  function win() { state = "over"; try { localStorage.setItem("tower-guard-won", "1"); } catch (e) {} msg.innerHTML = `<div>🏆 Victory!<small>All ${WAVES} waves defeated with ${lives} lives left!</small><button type="button" id="go">Play again</button></div>`; msg.hidden = false; document.getElementById("go").onclick = start; }
+  function draw(dt) {
+    for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) { x.fillStyle = (gx + gy) % 2 ? "#51a447" : "#5cb350"; x.fillRect(gx * cell, gy * cell, cell, cell); }
+    for (const i of pathCells) { const gx = i % GW, gy = Math.floor(i / GW); x.fillStyle = "#d9b88a"; x.fillRect(gx * cell, gy * cell, cell, cell); x.fillStyle = "#c9a675"; x.fillRect(gx * cell + cell * 0.2, gy * cell + cell * 0.6, cell * 0.12, cell * 0.12); }
+    const [cx, cy] = PATH[PATH.length - 1]; x.font = `${cell * 0.9}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("🏰", (cx - 0.5) * cell, (cy + 0.5) * cell);
+    if (!towers) return;
+    if (hoverCell !== null && state === "play") { const gx = hoverCell % GW, gy = Math.floor(hoverCell / GW), ok = !pathCells.has(hoverCell) && !towers.some((tw) => tw.x === gx && tw.y === gy); x.fillStyle = ok ? "#ffffff33" : "#ff000022"; x.fillRect(gx * cell, gy * cell, cell, cell); if (ok) { x.strokeStyle = "#ffffff66"; x.setLineDash([5, 5]); x.beginPath(); x.arc((gx + 0.5) * cell, (gy + 0.5) * cell, TOWERS[selT].range * cell, 0, 7); x.stroke(); x.setLineDash([]); } }
+    for (const tw of towers) {
+      const T = TOWERS[tw.type], px = (tw.x + 0.5) * cell, py = (tw.y + 0.5) * cell;
+      x.fillStyle = "#0003"; x.beginPath(); x.ellipse(px + 3, py + cell * 0.3, cell * 0.36, cell * 0.14, 0, 0, 7); x.fill();
+      x.fillStyle = "#adb5bd"; x.beginPath(); x.roundRect(px - cell * 0.36, py - cell * 0.3, cell * 0.72, cell * 0.62, cell * 0.12); x.fill();
+      x.save(); x.translate(px, py - cell * 0.05); x.rotate(tw.ang || 0); x.fillStyle = T.col; x.fillRect(-cell * 0.08 - tw.kick * 3, -cell * 0.09, cell * 0.42, cell * 0.18); x.beginPath(); x.arc(0, 0, cell * 0.2, 0, 7); x.fill(); x.restore();
+      for (let k = 0; k < tw.lv; k++) { x.fillStyle = "#ffd23f"; x.beginPath(); x.arc(px - cell * 0.2 + k * cell * 0.2, py + cell * 0.26, cell * 0.06, 0, 7); x.fill(); }
+    }
+    for (const e of enemies) {
+      const [ex, ey] = posAt(e.d), r = (e.big ? 0.36 : 0.24) * cell, bob = Math.abs(Math.sin(t * 8 + e.wob)) * 4;
+      x.fillStyle = "#0003"; x.beginPath(); x.ellipse(ex * cell, ey * cell + r * 0.7, r, r * 0.3, 0, 0, 7); x.fill();
+      x.fillStyle = e.slowT > 0 ? "#a5d8ff" : `hsl(${e.hue},70%,55%)`; x.beginPath(); x.arc(ex * cell, ey * cell - bob, r, Math.PI, 0); x.lineTo(ex * cell + r, ey * cell + r * 0.5 - bob); x.lineTo(ex * cell - r, ey * cell + r * 0.5 - bob); x.fill();
+      x.fillStyle = "#fff"; x.beginPath(); x.arc(ex * cell - r * 0.35, ey * cell - r * 0.2 - bob, r * 0.22, 0, 7); x.arc(ex * cell + r * 0.35, ey * cell - r * 0.2 - bob, r * 0.22, 0, 7); x.fill();
+      x.fillStyle = "#111"; x.beginPath(); x.arc(ex * cell - r * 0.3, ey * cell - r * 0.18 - bob, r * 0.1, 0, 7); x.arc(ex * cell + r * 0.4, ey * cell - r * 0.18 - bob, r * 0.1, 0, 7); x.fill();
+      x.fillStyle = "#0006"; x.fillRect(ex * cell - r, ey * cell - r - 10 - bob, r * 2, 4); x.fillStyle = "#51cf66"; x.fillRect(ex * cell - r, ey * cell - r - 10 - bob, r * 2 * Math.max(0, e.hp / e.max), 4);
+    }
+    for (const s of shots) { x.fillStyle = s.type === 1 ? "#222" : s.type === 2 ? "#a5d8ff" : "#5c3d1e"; x.beginPath(); x.arc(s.x * cell, s.y * cell, s.type === 1 ? cell * 0.09 : cell * 0.05, 0, 7); x.fill(); }
+    for (const f of fx) {
+      f.l -= dt; x.globalAlpha = Math.max(0, Math.min(1, f.l * 2));
+      if (f.text) { f.y -= dt * 0.6; x.font = `900 ${f.big ? cell * 0.5 : cell * 0.28}px system-ui`; x.textAlign = "center"; x.lineWidth = 4; x.strokeStyle = "#0008"; x.strokeText(f.text, f.x * cell, f.y * cell); x.fillStyle = "#ffd23f"; x.fillText(f.text, f.x * cell, f.y * cell); }
+      else if (f.ring) { f.r += dt * 3; x.strokeStyle = "#ff9f1c"; x.lineWidth = 4; x.beginPath(); x.arc(f.x * cell, f.y * cell, f.r * cell, 0, 7); x.stroke(); }
+      else { f.x += f.vx * dt; f.y += f.vy * dt; x.fillStyle = f.col; x.fillRect(f.x * cell - 2, f.y * cell - 2, 4, 4); }
+    }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.l > 0);
+  }
+  let hoverCell = null, lp = null;
+  const cellAt = (e) => { const r = c.getBoundingClientRect(), gx = Math.floor((e.clientX - r.left) / cell), gy = Math.floor((e.clientY - r.top) / cell); return gx >= 0 && gx < GW && gy >= 0 && gy < GH ? gy * GW + gx : null; };
+  function tapCell(i, sell) {
+    if (state !== "play" || i === null) return;
+    const gx = i % GW, gy = Math.floor(i / GW), tw = towers.find((q) => q.x === gx && q.y === gy);
+    if (tw) {
+      if (sell) { gold += Math.floor(TOWERS[tw.type].cost * tw.lv * 0.6); towers = towers.filter((q) => q !== tw); fx.push({ text: "Sold", x: gx + 0.5, y: gy + 0.3, l: 0.8 }); }
+      else if (tw.lv < 3) { const cost = Math.floor(TOWERS[tw.type].cost * 0.8 * tw.lv); if (gold >= cost) { gold -= cost; tw.lv++; fx.push({ text: "⬆ Level " + tw.lv, x: gx + 0.5, y: gy + 0.3, l: 0.9 }); } else fx.push({ text: `Need 💰${cost}`, x: gx + 0.5, y: gy + 0.3, l: 0.9 }); }
+    } else if (!pathCells.has(i)) {
+      const T = TOWERS[selT]; if (gold < T.cost) { fx.push({ text: "Not enough 💰", x: gx + 0.5, y: gy + 0.3, l: 0.9 }); return; }
+      gold -= T.cost; towers.push({ x: gx, y: gy, type: selT, lv: 1, cd: 0, ang: -Math.PI / 2 });
+    }
+    syncBar();
+  }
+  c.addEventListener("pointermove", (e) => (hoverCell = cellAt(e)));
+  c.addEventListener("pointerleave", () => (hoverCell = null));
+  c.addEventListener("pointerdown", (e) => { if (e.button === 2) return; const i = cellAt(e); hoverCell = i; lp = setTimeout(() => { lp = null; tapCell(i, true); }, 550); });
+  c.addEventListener("pointerup", (e) => { if (e.button === 2) return; if (lp) { clearTimeout(lp); lp = null; tapCell(cellAt(e), false); } });
+  c.addEventListener("contextmenu", (e) => { e.preventDefault(); tapCell(cellAt(e), true); });
+  addEventListener("keydown", (e) => {
+    if (/^[1-3]$/.test(e.key)) { selT = +e.key - 1; syncBar(); }
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (state !== "play") start(); else sendWave(); }
+    if (e.key.toLowerCase() === "f") { fast = !fast; syncBar(); }
+    // keyboard cursor for building
+    const m = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[e.key.toLowerCase()];
+    if (m) { e.preventDefault(); const cur = hoverCell ?? 0; const gx = Math.max(0, Math.min(GW - 1, cur % GW + m[0])), gy = Math.max(0, Math.min(GH - 1, Math.floor(cur / GW) + m[1])); hoverCell = gy * GW + gx; }
+    if (e.key.toLowerCase() === "b") tapCell(hoverCell, false);
+    if (e.key.toLowerCase() === "s" && hoverCell !== null) tapCell(hoverCell, true);
+  });
+  document.getElementById("go").onclick = start;
+  let last = 0; function loop(now) { let dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") { update(dt * (fast ? 2 : 1)); } draw(dt); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

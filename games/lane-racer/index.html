@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Lane Racer</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2f9e44; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0008; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🚗 Lane Racer<small>← → / A D or tap the left/right side to switch lanes.<br>↑ ↓ / W S to speed up and slow down.<br>Grab ⛽ fuel and don't crash! Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const LANES = 4, CAR_COLS = ["#4dabf7", "#ffd23f", "#b15cff", "#51cf66", "#ff9f1c", "#e8ecff", "#2ec4b6"];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, roadW, laneW, ox, U, me, cars, cans, parts, dist, speed, fuel, state = "menu", last = 0, spawnT = 0, canT = 3, scroll = 0, shake = 0, best = 0, keys = {};
+  try { best = +localStorage.getItem("lane-racer-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); roadW = Math.min(W * 0.92, H * 0.62, 520); laneW = roadW / LANES; ox = (W - roadW) / 2; U = laneW / 100; }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  const laneX = (l) => ox + (l + 0.5) * laneW;
+  function start() { me = { lane: 1, x: laneX(1), tilt: 0 }; cars = []; cans = []; parts = []; dist = 0; speed = 300; fuel = 100; state = "play"; msg.hidden = true; }
+  function over(why) {
+    state = "over"; shake = 18;
+    for (let i = 0; i < 40; i++) { const a = Math.random() * 7, s = 100 + Math.random() * 300; parts.push({ x: me.x, y: H - 140 * U, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.8, col: i % 2 ? "#ff9f1c" : "#ff5d73" }); }
+    const s = Math.floor(dist / 100);
+    if (s > best) { best = s; try { localStorage.setItem("lane-racer-best", best); } catch (e) {} }
+    setTimeout(() => show(why, `Distance: ${s} · Best: ${best}<br>Press Space or tap to race again`), 700);
+  }
+  function drawCar(px, py, col, tilt = 0, player = false) {
+    const w = 46 * U, h = 82 * U;
+    x.save(); x.translate(px, py); x.rotate(tilt);
+    x.fillStyle = "#0004"; x.beginPath(); x.roundRect(-w / 2 + 4 * U, -h / 2 + 6 * U, w, h, 12 * U); x.fill();
+    x.fillStyle = "#222"; [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => x.fillRect(sx * w / 2 - 5 * U + (sx > 0 ? 0 : 0), sy * h * 0.28 - 9 * U, 6 * U * (sx > 0 ? 1 : 1), 18 * U));
+    x.fillStyle = col; x.beginPath(); x.roundRect(-w / 2, -h / 2, w, h, 12 * U); x.fill();
+    x.fillStyle = "#1c2a4a"; x.beginPath(); x.roundRect(-w * 0.38, -h * 0.22, w * 0.76, h * 0.2, 5 * U); x.fill(); x.beginPath(); x.roundRect(-w * 0.36, h * 0.18, w * 0.72, h * 0.14, 5 * U); x.fill();
+    x.fillStyle = "#ffffff55"; x.fillRect(-w * 0.08, -h * 0.48, w * 0.16, h * 0.96);
+    if (player) { x.fillStyle = "#fff9c4"; x.fillRect(-w * 0.42, -h * 0.5, w * 0.18, 4 * U); x.fillRect(w * 0.24, -h * 0.5, w * 0.18, 4 * U); }
+    else { x.fillStyle = "#ff5d73"; x.fillRect(-w * 0.42, h * 0.46, w * 0.18, 4 * U); x.fillRect(w * 0.24, h * 0.46, w * 0.18, 4 * U); }
+    x.restore();
+  }
+  function update(dt) {
+    if (keys.up) speed = Math.min(900, speed + 300 * dt); else if (keys.down) speed = Math.max(180, speed - 500 * dt); else speed = Math.min(Math.max(speed, 300), speed + 10 * dt);
+    dist += speed * dt; scroll += speed * dt * U; fuel -= dt * (4 + speed / 200);
+    if (fuel <= 0) return over("⛽ Out of fuel!");
+    const tx = laneX(me.lane); me.tilt = (tx - me.x) / (laneW * 3); me.x += (tx - me.x) * Math.min(1, dt * 12);
+    spawnT -= dt;
+    if (spawnT <= 0) {
+      const lane = Math.floor(Math.random() * LANES);
+      if (!cars.some((cc) => cc.lane === lane && cc.y < 200 * U)) cars.push({ lane, y: -120 * U, v: 120 + Math.random() * 140, col: CAR_COLS[Math.floor(Math.random() * CAR_COLS.length)] });
+      spawnT = Math.max(0.35, 1.2 - dist / 40000) * (300 / speed) + Math.random() * 0.3;
+    }
+    canT -= dt;
+    if (canT <= 0) { cans.push({ lane: Math.floor(Math.random() * LANES), y: -60 * U }); canT = 4 + Math.random() * 3; }
+    const myY = H - 140 * U;
+    for (const car of cars) {
+      car.y += (speed - car.v) * dt * U;
+      if (Math.abs(laneX(car.lane) - me.x) < 40 * U && Math.abs(car.y - myY) < 78 * U) return over("💥 Crash!");
+    }
+    cars = cars.filter((car) => car.y < H + 150 * U && car.y > -400 * U);
+    for (const cn of cans) {
+      cn.y += speed * dt * U;
+      if (!cn.got && Math.abs(laneX(cn.lane) - me.x) < 40 * U && Math.abs(cn.y - myY) < 60 * U) { cn.got = true; fuel = Math.min(100, fuel + 35); for (let i = 0; i < 12; i++) { const a = Math.random() * 7; parts.push({ x: laneX(cn.lane), y: cn.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, life: 0.5, col: "#51cf66" }); } }
+    }
+    cans = cans.filter((cn) => !cn.got && cn.y < H + 60);
+    if (speed > 600 && Math.random() < dt * 30) parts.push({ x: me.x + (Math.random() - 0.5) * 30 * U, y: myY + 46 * U, vx: 0, vy: speed * 0.4, life: 0.3, col: "#ffffff88" });
+  }
+  function draw(dt) {
+    x.save();
+    if (shake > 0) { x.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake = Math.max(0, shake - dt * 30); }
+    x.fillStyle = "#3fae4a"; x.fillRect(-20, -20, W + 40, H + 40);
+    // roadside trees
+    for (let side = 0; side < 2; side++) for (let i = -1; i < H / (120 * U) + 2; i++) {
+      const y = ((i * 120 * U + scroll * 1) % (H + 240 * U)) - 120 * U, tx = side ? ox + roadW + 40 * U + (i % 2) * 30 * U : ox - 40 * U - (i % 2) * 30 * U;
+      x.fillStyle = "#2b8a3e"; x.beginPath(); x.arc(tx, y, 26 * U, 0, 7); x.fill(); x.fillStyle = "#37b24d"; x.beginPath(); x.arc(tx - 6 * U, y - 6 * U, 16 * U, 0, 7); x.fill();
+    }
+    x.fillStyle = "#495057"; x.fillRect(ox, -20, roadW, H + 40);
+    x.fillStyle = "#fff"; x.fillRect(ox + 4 * U, -20, 5 * U, H + 40); x.fillRect(ox + roadW - 9 * U, -20, 5 * U, H + 40);
+    x.fillStyle = "#ffffffcc";
+    for (let l = 1; l < LANES; l++) for (let y = (scroll % (80 * U)) - 80 * U; y < H; y += 80 * U) x.fillRect(ox + l * laneW - 3 * U, y, 6 * U, 44 * U);
+    if (cans) for (const cn of cans) { x.font = `${40 * U}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("⛽", laneX(cn.lane), cn.y + Math.sin(performance.now() / 200) * 4); }
+    if (cars) for (const car of cars) drawCar(laneX(car.lane), car.y, car.col);
+    if (me && state !== "over") drawCar(me.x, H - 140 * U, "#ff4f7b", me.tilt, true);
+    if (parts) { for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; x.globalAlpha = Math.max(0, p.life * 2); x.fillStyle = p.col; x.fillRect(p.x - 3, p.y - 3, 6, 6); } x.globalAlpha = 1; parts = parts.filter((p) => p.life > 0); }
+    x.restore();
+    if (me) {
+      x.fillStyle = "#0007"; x.beginPath(); x.roundRect(10, 10, 170, 74, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 20px system-ui"; x.textAlign = "left"; x.textBaseline = "alphabetic";
+      x.fillText(`${Math.floor(dist / 100)}  🏆 ${best}`, 22, 36); x.font = "700 14px system-ui"; x.fillText(`${Math.round(speed / 5)} km/h`, 22, 56);
+      x.fillStyle = "#ffffff33"; x.fillRect(22, 64, 146, 10); x.fillStyle = fuel < 25 ? "#ff5d73" : "#51cf66"; x.fillRect(22, 64, 146 * Math.max(0, fuel) / 100, 10);
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); else if (state === "menu") scroll += 120 * dt * U; draw(dt); requestAnimationFrame(loop); }
+  const move = (d) => { if (state === "play") me.lane = Math.max(0, Math.min(LANES - 1, me.lane + d)); };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["arrowleft", "a"].includes(k)) { e.preventDefault(); if (!e.repeat) move(-1); }
+    if (["arrowright", "d"].includes(k)) { e.preventDefault(); if (!e.repeat) move(1); }
+    if (["arrowup", "w"].includes(k)) { e.preventDefault(); keys.up = true; }
+    if (["arrowdown", "s"].includes(k)) { e.preventDefault(); keys.down = true; }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || (state === "over" && !msg.hidden)) start(); else if (state === "paused") { state = "play"; msg.hidden = true; } }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); }
+  });
+  addEventListener("keyup", (e) => { const k = e.key.toLowerCase(); if (["arrowup", "w"].includes(k)) keys.up = false; if (["arrowdown", "s"].includes(k)) keys.down = false; });
+  addEventListener("pointerdown", (e) => {
+    if (state === "menu" || (state === "over" && !msg.hidden)) return start();
+    if (state === "paused") { state = "play"; msg.hidden = true; return; }
+    if (state === "play") move(e.clientX < W / 2 ? -1 : 1);
+  });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

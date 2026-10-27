@@ -1,0 +1,21 @@
+{
+  "title": "Sea Battle",
+  "category": "Strategy",
+  "description": "Hide your fleet and hunt down the computer's ships. Call your shots on the grid and sink every ship before yours go down.",
+  "instructions": [
+    "Place your ships (press R or tap Rotate to turn them), or use Random.",
+    "Click or tap the enemy grid to fire.",
+    "Keyboard: arrows move, Space fires.",
+    "Sink all five enemy ships to win."
+  ],
+  "tags": [
+    "ships",
+    "grid",
+    "guessing",
+    "vs computer"
+  ],
+  "added": "2026-10-17",
+  "popularity": 82,
+  "license": "Original",
+  "source": "Original work"
+}

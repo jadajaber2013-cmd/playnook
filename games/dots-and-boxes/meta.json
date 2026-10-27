@@ -1,0 +1,21 @@
+{
+  "title": "Dots and Boxes",
+  "category": "Strategy",
+  "description": "Take turns drawing lines between dots. Complete the fourth side of a box to claim it and take another turn. Most boxes wins!",
+  "instructions": [
+    "Click or tap between two dots to draw a line.",
+    "Keyboard: arrows move the cursor, Space draws.",
+    "Close a box to score it and go again.",
+    "Choose the grid size before you start."
+  ],
+  "tags": [
+    "pencil",
+    "boxes",
+    "classic",
+    "vs computer"
+  ],
+  "added": "2026-10-20",
+  "popularity": 66,
+  "license": "Original",
+  "source": "Original work"
+}

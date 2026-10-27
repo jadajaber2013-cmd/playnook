@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pixel Jumper</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #5ec8ff; font-family: system-ui, sans-serif; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; top: 8px; left: 10px; right: 10px; display: flex; gap: 10px; font-weight: 800; font-size: 16px; pointer-events: none; }
+  #hud span { background: #0005; padding: 4px 10px; border-radius: 999px; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #0007; font-size: 28px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 500; margin-top: 10px; line-height: 1.5; }
+  .tc { position: fixed; bottom: 14px; display: none; gap: 12px; }
+  .tc button { width: 72px; height: 72px; border-radius: 50%; border: 3px solid #fff8; background: #0004; color: #fff; font-size: 28px; touch-action: none; }
+  .tc button.on { background: #fff5; }
+  #tl { left: 14px; } #tr { right: 14px; }
+  @media (pointer: coarse) { .tc { display: flex; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="lvl">Level 1</span><span id="coins">🪙 0</span><span id="deaths">💀 0</span></div>
+<div id="msg"><div>🏃 Pixel Jumper<small>Reach the flag at the end of each level!<br>Move: ← → or A D · Jump: Space, ↑ or W<br>Jump on slimes to squash them. Avoid spikes.<br><b>Press Space or tap to start</b></small></div></div>
+<div class="tc" id="tl"><button data-k="left" aria-label="Left">◀</button><button data-k="right" aria-label="Right">▶</button></div>
+<div class="tc" id="tr"><button data-k="jump" aria-label="Jump">⤒</button></div>
+<script>
+(() => {
+  const T = 32, ROWS = 12;
+  // Level builder: ground = [from, to] column ranges (rows 10–11), steps = [col, width, height],
+  // blocks/coins = [row, col, length], spikes = [col, length], enemies = [col], start/flag = col.
+  const LEVELS = [
+    { width: 52, ground: [[0, 10], [14, 26], [29, 37], [41, 51]], steps: [], blocks: [[7, 5, 4], [7, 18, 4]], coins: [[6, 5, 4], [6, 18, 4], [8, 12, 2], [8, 39, 2]], spikes: [[33, 2]], enemies: [20, 46], start: 2, flag: 50 },
+    { width: 70, ground: [[0, 9], [13, 19], [23, 30], [33, 34], [38, 45], [48, 57], [61, 69]], steps: [[28, 3, 2]], blocks: [[8, 14, 3], [5, 27, 3]], coins: [[4, 27, 3], [7, 41, 3], [8, 51, 3], [7, 62, 2], [7, 14, 3]], spikes: [[41, 3], [54, 2]], enemies: [7, 25, 50, 64], start: 2, flag: 68 },
+    { width: 84, ground: [[0, 8], [12, 15], [19, 23], [26, 40], [44, 47], [51, 66], [70, 83]], steps: [[30, 2, 2], [32, 2, 3], [60, 3, 1]], blocks: [[6, 3, 3], [7, 52, 2]], coins: [[5, 3, 3], [8, 10, 1], [8, 17, 1], [8, 25, 1], [8, 42, 1], [8, 49, 1], [8, 68, 1], [7, 37, 2], [6, 52, 2]], spikes: [[37, 2], [55, 3], [73, 2]], enemies: [6, 58, 64, 78], start: 2, flag: 82 }
+  ];
+
+  const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+  const msg = document.getElementById("msg");
+  const lvlEl = document.getElementById("lvl"), coinsEl = document.getElementById("coins"), deathsEl = document.getElementById("deaths");
+  let W, H, scale, levelIdx = Math.min(+localStorage.getItem("pj-level") || 0, LEVELS.length - 1);
+  let map, coins, enemies, flag, player, state = "menu", deaths = 0, totalCoins = 0, levelCoins = 0, camX = 0, time = 0;
+  const input = { left: false, right: false, jump: false };
+  let jumpBuffer = 0;
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scale = Math.min(H / (ROWS * T), W / (14 * T));
+  }
+
+  function build(i) {
+    const L = LEVELS[i];
+    map = Array.from({ length: ROWS }, () => Array(L.width).fill("."));
+    L.ground.forEach(([a, b]) => { for (let c = a; c <= b; c++) map[10][c] = map[11][c] = "#"; });
+    L.steps.forEach(([c0, w, h]) => { for (let c = c0; c < c0 + w; c++) for (let r = 10 - h; r < 10; r++) map[r][c] = "#"; });
+    L.blocks.forEach(([r, c0, n]) => { for (let c = c0; c < c0 + n; c++) map[r][c] = "B"; });
+    coins = [];
+    L.coins.forEach(([r, c0, n]) => { for (let c = c0; c < c0 + n; c++) coins.push({ x: c * T + T / 2, y: r * T + T / 2, got: false }); });
+    L.spikes.forEach(([c0, n]) => { for (let c = c0; c < c0 + n; c++) map[9][c] = "^"; });
+    enemies = L.enemies.map((c) => ({ x: c * T + 4, y: 9 * T + 12, w: 24, h: 20, vx: -60, vy: 0, alive: true, squash: 0 }));
+    flag = { x: L.flag * T, y: 9 * T };
+    player = { x: L.start * T + 5, y: 9 * T + 4, w: 22, h: 28, vx: 0, vy: 0, onGround: false, coyote: 0, face: 1 };
+    levelCoins = 0; camX = 0;
+    lvlEl.textContent = `Level ${i + 1}/${LEVELS.length}`;
+    hud();
+  }
+
+  const hud = () => { coinsEl.textContent = "🪙 " + (totalCoins + levelCoins); deathsEl.textContent = "💀 " + deaths; };
+  const tile = (c, r) => (r < 0 || c < 0 || r >= ROWS || c >= map[0].length ? (c < 0 || c >= map[0].length ? "#" : ".") : map[r][c]);
+  const solid = (c, r) => { const t = tile(c, r); return t === "#" || t === "B"; };
+
+  // Move a box along one axis and stop it at solid tiles.
+  function moveBody(b, dt) {
+    b.x += b.vx * dt;
+    let r0 = Math.floor(b.y / T), r1 = Math.floor((b.y + b.h - 0.01) / T);
+    let c = b.vx > 0 ? Math.floor((b.x + b.w) / T) : Math.floor(b.x / T);
+    let hitX = false;
+    for (let r = r0; r <= r1; r++) if (b.vx !== 0 && solid(c, r)) { b.x = b.vx > 0 ? c * T - b.w - 0.01 : (c + 1) * T + 0.01; hitX = true; b.vx = b.isEnemy ? b.vx : 0; break; }
+
+    b.y += b.vy * dt;
+    const c0 = Math.floor(b.x / T), c1 = Math.floor((b.x + b.w - 0.01) / T);
+    const r = b.vy > 0 ? Math.floor((b.y + b.h) / T) : Math.floor(b.y / T);
+    b.onGround = false;
+    for (let cc = c0; cc <= c1; cc++) if (solid(cc, r)) {
+      if (b.vy > 0) { b.y = r * T - b.h; b.onGround = true; } else if (b.vy < 0) b.y = (r + 1) * T;
+      b.vy = 0; break;
+    }
+    return hitX;
+  }
+
+  function die() {
+    deaths++;
+    build(levelIdx);
+  }
+
+  function update(dt) {
+    time += dt;
+    const p = player;
+    const accel = p.onGround ? 2200 : 1400, max = 230;
+    if (input.left && !input.right) { p.vx = Math.max(-max, p.vx - accel * dt); p.face = -1; }
+    else if (input.right && !input.left) { p.vx = Math.min(max, p.vx + accel * dt); p.face = 1; }
+    else { const f = (p.onGround ? 2000 : 600) * dt; p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f; }
+
+    p.coyote = p.onGround ? 0.1 : p.coyote - dt;
+    jumpBuffer -= dt;
+    if (jumpBuffer > 0 && p.coyote > 0) { p.vy = -640; p.coyote = 0; jumpBuffer = 0; }
+    if (!input.jump && p.vy < -250) p.vy = -250; // short hop when jump released early
+    p.vy = Math.min(900, p.vy + 1800 * dt);
+    moveBody(p, dt);
+    if (p.x < 0) p.x = 0;
+    if (p.y > ROWS * T + 64) return die();
+
+    // Spikes (only the pointy lower part hurts)
+    for (let c = Math.floor(p.x / T); c <= Math.floor((p.x + p.w) / T); c++)
+      for (let r = Math.floor(p.y / T); r <= Math.floor((p.y + p.h) / T); r++)
+        if (tile(c, r) === "^" && p.y + p.h > r * T + 14 && p.x + p.w > c * T + 6 && p.x < c * T + T - 6) return die();
+
+    for (const co of coins) if (!co.got && Math.abs(co.x - (p.x + p.w / 2)) < 18 && Math.abs(co.y - (p.y + p.h / 2)) < 20) { co.got = true; levelCoins++; hud(); }
+
+    for (const e of enemies) {
+      if (!e.alive) { e.squash += dt; continue; }
+      e.isEnemy = true;
+      e.vy = Math.min(900, e.vy + 1800 * dt);
+      const hit = moveBody(e, dt);
+      const ahead = e.vx > 0 ? Math.floor((e.x + e.w + 2) / T) : Math.floor((e.x - 2) / T);
+      if (hit || (e.onGround && !solid(ahead, Math.floor((e.y + e.h + 2) / T)))) e.vx = -e.vx;
+      if (e.y > ROWS * T + 64) e.alive = false;
+      if (p.x < e.x + e.w && p.x + p.w > e.x && p.y < e.y + e.h && p.y + p.h > e.y) {
+        if (p.vy > 0 && p.y + p.h - e.y < 16) { e.alive = false; p.vy = input.jump ? -560 : -400; levelCoins++; hud(); }
+        else return die();
+      }
+    }
+
+    if (p.x + p.w > flag.x + 8 && p.x < flag.x + T && p.y + p.h > flag.y - 3 * T) complete();
+
+    const viewW = W / scale;
+    camX = map[0].length * T <= viewW ? (map[0].length * T - viewW) / 2 : Math.max(0, Math.min(map[0].length * T - viewW, p.x + p.w / 2 - viewW / 2));
+  }
+
+  function complete() {
+    totalCoins += levelCoins; levelCoins = 0;
+    if (levelIdx < LEVELS.length - 1) {
+      levelIdx++;
+      localStorage.setItem("pj-level", levelIdx);
+      state = "between";
+      show(`Level ${levelIdx} complete! 🎉`, "Press Space or tap for the next level");
+    } else {
+      localStorage.setItem("pj-level", 0);
+      state = "won";
+      show("🏆 You beat every level!", `Coins: ${totalCoins} · Deaths: ${deaths}<br>Press Space or tap to play again`);
+    }
+  }
+
+  function show(title, sub) { msg.innerHTML = `<div>${title}<small>${sub}</small></div>`; msg.hidden = false; }
+
+  function proceed() {
+    if (state === "menu" || state === "between") { build(levelIdx); state = "play"; msg.hidden = true; }
+    else if (state === "won") { levelIdx = 0; totalCoins = 0; deaths = 0; build(0); state = "play"; msg.hidden = true; }
+    else if (state === "paused") { state = "play"; msg.hidden = true; }
+  }
+  function pause() { if (state === "play") { state = "paused"; show("Paused", "Press P or tap to continue"); } else if (state === "paused") proceed(); }
+
+  // ---------- Drawing ----------
+  function draw() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#5ec8ff"); g.addColorStop(1, "#c6f1ff");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const mapH = ROWS * T * scale, offY = (H - mapH) * 0.7; // more sky above, a little earth below
+    ctx.fillStyle = "#5c3a1b"; ctx.fillRect(0, offY + mapH - 1, W, H);
+    // parallax hills
+    ctx.fillStyle = "#9ee6a8";
+    for (let i = -1; i < W / 260 + 2; i++) {
+      const x = i * 260 - ((camX * scale * 0.3) % 260);
+      ctx.beginPath(); ctx.ellipse(x, offY + 10 * T * scale, 180, 120 * scale + 40, 0, Math.PI, 0); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(0, offY); ctx.scale(scale, scale); ctx.translate(-camX, 0);
+    const c0 = Math.max(0, Math.floor(camX / T) - 1), c1 = Math.min(map[0].length - 1, Math.ceil((camX + W / scale) / T) + 1);
+    for (let r = 0; r < ROWS; r++) for (let c = c0; c <= c1; c++) {
+      const t = map[r][c], x = c * T, y = r * T;
+      if (t === "#") {
+        ctx.fillStyle = "#8b5a2b"; ctx.fillRect(x, y, T, T);
+        ctx.fillStyle = "#a8743f"; ctx.fillRect(x + 4, y + 12, 10, 5); ctx.fillRect(x + 18, y + 22, 8, 4);
+        if (!solid(c, r - 1)) { ctx.fillStyle = "#3fbf4a"; ctx.fillRect(x, y, T, 9); ctx.fillStyle = "#62d96b"; ctx.fillRect(x, y, T, 3); }
+      } else if (t === "B") {
+        ctx.fillStyle = "#c97b3a"; ctx.fillRect(x, y, T, T);
+        ctx.fillStyle = "#e09a5a"; ctx.fillRect(x + 2, y + 2, T - 4, 5);
+        ctx.strokeStyle = "#8a4f1f"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, T - 2, T - 2);
+        ctx.beginPath(); ctx.moveTo(x, y + 16); ctx.lineTo(x + T, y + 16); ctx.moveTo(x + 16, y); ctx.lineTo(x + 16, y + 16); ctx.stroke();
+      } else if (t === "^") {
+        ctx.fillStyle = "#cfd6e0";
+        for (let k = 0; k < 2; k++) { ctx.beginPath(); ctx.moveTo(x + k * 16, y + T); ctx.lineTo(x + k * 16 + 8, y + 12); ctx.lineTo(x + k * 16 + 16, y + T); ctx.fill(); }
+      }
+    }
+    // coins
+    for (const co of coins) if (!co.got) {
+      const w = Math.abs(Math.sin(time * 3 + co.x)) * 9 + 2;
+      ctx.fillStyle = "#ffd23f"; ctx.beginPath(); ctx.ellipse(co.x, co.y + Math.sin(time * 4 + co.x) * 2, w, 11, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = "#fff3b0"; ctx.fillRect(co.x - 1, co.y - 5, 2, 8);
+    }
+    // flag
+    ctx.fillStyle = "#555"; ctx.fillRect(flag.x + 14, flag.y - 3 * T, 4, 4 * T);
+    ctx.fillStyle = "#ff5d73"; ctx.beginPath(); ctx.moveTo(flag.x + 18, flag.y - 3 * T); ctx.lineTo(flag.x + 18 + 30, flag.y - 3 * T + 12 + Math.sin(time * 5) * 2); ctx.lineTo(flag.x + 18, flag.y - 3 * T + 24); ctx.fill();
+    // enemies
+    for (const e of enemies) {
+      if (!e.alive && e.squash > 0.4) continue;
+      ctx.fillStyle = "#8e44ff";
+      if (!e.alive) { ctx.fillRect(e.x, e.y + e.h - 6, e.w, 6); continue; }
+      ctx.beginPath(); ctx.roundRect(e.x, e.y, e.w, e.h, [10, 10, 4, 4]); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.fillRect(e.x + 5, e.y + 6, 5, 6); ctx.fillRect(e.x + 14, e.y + 6, 5, 6);
+      ctx.fillStyle = "#111"; const d = e.vx > 0 ? 2 : 0; ctx.fillRect(e.x + 6 + d, e.y + 8, 2, 3); ctx.fillRect(e.x + 15 + d, e.y + 8, 2, 3);
+    }
+    // player
+    const p = player;
+    ctx.fillStyle = "#ff5d73"; ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 6); ctx.fill();
+    ctx.fillStyle = "#c93a50"; ctx.fillRect(p.x, p.y + p.h - 6, p.w, 6);
+    const ex = p.face > 0 ? 8 : 2;
+    ctx.fillStyle = "#fff"; ctx.fillRect(p.x + ex, p.y + 7, 5, 7); ctx.fillRect(p.x + ex + 7, p.y + 7, 5, 7);
+    ctx.fillStyle = "#111"; ctx.fillRect(p.x + ex + (p.face > 0 ? 2 : 0), p.y + 9, 3, 4); ctx.fillRect(p.x + ex + 7 + (p.face > 0 ? 2 : 0), p.y + 9, 3, 4);
+    ctx.restore();
+  }
+
+  // ---------- Input ----------
+  const KEYS = { arrowleft: "left", a: "left", arrowright: "right", d: "right", arrowup: "jump", w: "jump", " ": "jump", z: "jump" };
+  addEventListener("keydown", (e) => {
+    const k = KEYS[e.key.toLowerCase()];
+    if (k || e.key === " ") e.preventDefault();
+    if (state !== "play") { if ((e.key === " " || e.key === "Enter") && !e.repeat) proceed(); else if (e.key.toLowerCase() === "p") pause(); return; }
+    if (e.key.toLowerCase() === "p" || e.key === "Escape") return pause();
+    if (k) { if (k === "jump" && !input.jump) jumpBuffer = 0.12; input[k] = true; }
+  });
+  addEventListener("keyup", (e) => { const k = KEYS[e.key.toLowerCase()]; if (k) input[k] = false; });
+
+  // Touch buttons (multi-touch: each finger tracked separately)
+  const held = new Map();
+  document.querySelectorAll(".tc button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (state !== "play") return proceed();
+      b.setPointerCapture(e.pointerId);
+      held.set(e.pointerId, b.dataset.k);
+      if (b.dataset.k === "jump") jumpBuffer = 0.12;
+      input[b.dataset.k] = true; b.classList.add("on");
+    });
+    const up = (e) => { held.delete(e.pointerId); input[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", input[b.dataset.k]); };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+  });
+  msg.addEventListener("pointerdown", proceed);
+  canvas.addEventListener("pointerdown", () => { if (state !== "play") proceed(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") pause(); });
+  addEventListener("blur", () => { input.left = input.right = input.jump = false; });
+
+  let last = 0, acc = 0;
+  function loop(t) {
+    const dt = Math.min(0.1, (t - last) / 1000 || 0); last = t;
+    if (state === "play") { acc += dt; while (acc >= 1 / 120) { acc -= 1 / 120; update(1 / 120); if (state !== "play") break; } }
+    else { acc = 0; time += dt; }
+    draw();
+    requestAnimationFrame(loop);
+  }
+  addEventListener("resize", resize);
+  resize(); build(levelIdx); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sliding Tiles</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(135deg, #2b1055, #7597de); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 10px; box-sizing: border-box; }
+  #hud { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-weight: 800; }
+  #hud span, #hud button { background: #ffffff22; padding: 8px 14px; border-radius: 999px; border: 0; color: #fff; font: inherit; font-weight: 800; }
+  #hud button { cursor: pointer; background: #ffd23f; color: #3a2400; }
+  #board { position: relative; width: var(--s); height: var(--s); background: #ffffff1a; border-radius: 18px; box-shadow: inset 0 0 0 2px #ffffff22, 0 20px 50px #0005; }
+  .tile { position: absolute; display: grid; place-items: center; border-radius: 12px; font-weight: 900; color: #fff; cursor: pointer; transition: transform .14s cubic-bezier(.2,.8,.2,1), background .3s; box-shadow: inset 0 -5px 0 #0003, 0 4px 10px #0003; }
+  .tile.ok { background: linear-gradient(135deg, #2ec4b6, #20a39e) !important; }
+  .tile:active { filter: brightness(1.1); }
+  #win { position: fixed; inset: 0; display: grid; place-items: center; background: #0008; text-align: center; font-size: 30px; font-weight: 900; }
+  #win[hidden] { display: none; }
+  #win div { animation: pop .5s cubic-bezier(.34,1.56,.64,1); }
+  #win small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #win button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+  @keyframes pop { from { transform: scale(.5); opacity: 0; } }
+  .confetti { position: fixed; top: -10px; width: 10px; height: 14px; animation: fall linear forwards; pointer-events: none; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="moves">Moves: 0</span><span id="time">⏱ 0s</span><span id="best">Best: –</span><button type="button" id="size">4×4</button><button type="button" id="new">↻ Shuffle</button></div>
+  <div id="board" role="grid" aria-label="Sliding puzzle"></div>
+  <div style="opacity:.75;font-size:13px">Tap a tile next to the gap · Arrow keys / WASD slide tiles</div>
+</div>
+<div id="win" hidden><div>🎉 Solved!<small id="winText"></small><button type="button" id="again">Play again</button></div></div>
+<script>
+(() => {
+  const board = document.getElementById("board"), movesEl = document.getElementById("moves"), timeEl = document.getElementById("time"), bestEl = document.getElementById("best"), sizeBtn = document.getElementById("size");
+  let N = 4, tiles, empty, moves, startT, timer, px, solvedLock = false;
+  try { N = +localStorage.getItem("sliding-size") || 4; } catch (e) {}
+  const bestKey = () => "sliding-best-" + N;
+  function layout() {
+    const s = Math.floor(Math.min(innerWidth - 24, innerHeight - 130, 520));
+    board.style.setProperty("--s", s + "px"); px = s; render();
+  }
+  function newGame() {
+    sizeBtn.textContent = N + "×" + N;
+    tiles = [...Array(N * N - 1).keys()].map((i) => i + 1).concat(0); empty = N * N - 1;
+    // shuffle with random legal moves so the puzzle is always solvable
+    let prev = -1;
+    for (let i = 0; i < N * N * 40; i++) { const opts = nbrs(empty).filter((p) => p !== prev); const p = opts[Math.floor(Math.random() * opts.length)]; prev = empty; swap(p); }
+    if (solved()) return newGame();
+    moves = 0; startT = 0; clearInterval(timer); timeEl.textContent = "⏱ 0s"; movesEl.textContent = "Moves: 0"; solvedLock = false;
+    let b = null; try { b = localStorage.getItem(bestKey()); } catch (e) {}
+    bestEl.textContent = "Best: " + (b ? b + " moves" : "–");
+    board.innerHTML = "";
+    tiles.forEach((v) => {
+      if (!v) return;
+      const t = document.createElement("div"); t.className = "tile"; t.dataset.v = v; t.textContent = v;
+      const hue = 260 + ((v - 1) / (N * N - 1)) * 120;
+      t.style.background = `linear-gradient(135deg, hsl(${hue},80%,62%), hsl(${hue + 20},70%,48%))`;
+      t.addEventListener("pointerdown", (e) => { e.preventDefault(); clickTile(tiles.indexOf(v)); });
+      board.appendChild(t);
+    });
+    render();
+  }
+  const nbrs = (i) => { const r = Math.floor(i / N), c = i % N, o = []; if (r > 0) o.push(i - N); if (r < N - 1) o.push(i + N); if (c > 0) o.push(i - 1); if (c < N - 1) o.push(i + 1); return o; };
+  function swap(i) { tiles[empty] = tiles[i]; tiles[i] = 0; empty = i; }
+  const solved = () => tiles.every((v, i) => v === (i === N * N - 1 ? 0 : i + 1));
+  function clickTile(i) {
+    if (solvedLock) return;
+    const r = Math.floor(i / N), c = i % N, er = Math.floor(empty / N), ec = empty % N;
+    if (r !== er && c !== ec) return;
+    // slide a whole row/column segment toward the gap
+    const step = r === er ? (c < ec ? -1 : 1) : (r < er ? -N : N);
+    while (empty !== i) { swap(empty + step); moves++; }
+    after();
+  }
+  function after() {
+    if (!startT) { startT = Date.now(); timer = setInterval(() => (timeEl.textContent = "⏱ " + Math.floor((Date.now() - startT) / 1000) + "s"), 500); }
+    movesEl.textContent = "Moves: " + moves; render();
+    if (solved()) {
+      solvedLock = true; clearInterval(timer);
+      const secs = Math.floor((Date.now() - startT) / 1000);
+      let b = Infinity; try { b = +localStorage.getItem(bestKey()) || Infinity; } catch (e) {}
+      const nb = moves < b; if (nb) try { localStorage.setItem(bestKey(), moves); } catch (e) {}
+      document.getElementById("winText").textContent = `${moves} moves in ${secs}s${nb ? " — new best!" : ""}`;
+      confetti(); setTimeout(() => { document.getElementById("win").hidden = false; }, 400);
+    }
+  }
+  function render() {
+    if (!tiles) return;
+    const gap = Math.max(4, px * 0.012), cell = (px - gap) / N;
+    board.querySelectorAll(".tile").forEach((t) => {
+      const v = +t.dataset.v, i = tiles.indexOf(v);
+      Object.assign(t.style, { width: cell - gap + "px", height: cell - gap + "px", fontSize: cell * 0.38 + "px", transform: `translate(${gap + (i % N) * cell}px, ${gap + Math.floor(i / N) * cell}px)` });
+      t.classList.toggle("ok", v === i + 1);
+    });
+  }
+  function confetti() {
+    for (let i = 0; i < 60; i++) {
+      const p = document.createElement("div"); p.className = "confetti";
+      Object.assign(p.style, { left: Math.random() * 100 + "vw", background: `hsl(${Math.random() * 360},90%,60%)`, animationDuration: 1.5 + Math.random() * 2 + "s", animationDelay: Math.random() * 0.5 + "s" });
+      document.body.appendChild(p); setTimeout(() => p.remove(), 4500);
+    }
+  }
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), er = Math.floor(empty / N), ec = empty % N;
+    const m = { arrowleft: [0, 1], a: [0, 1], arrowright: [0, -1], d: [0, -1], arrowup: [1, 0], w: [1, 0], arrowdown: [-1, 0], s: [-1, 0] }[k];
+    if (m) { e.preventDefault(); const r = er + m[0], c = ec + m[1]; if (r >= 0 && r < N && c >= 0 && c < N) clickTile(r * N + c); }
+    if (k === "n") newGame();
+  });
+  document.getElementById("new").addEventListener("click", newGame);
+  document.getElementById("again").addEventListener("click", () => { document.getElementById("win").hidden = true; newGame(); });
+  sizeBtn.addEventListener("click", () => { N = N === 3 ? 4 : N === 4 ? 5 : 3; try { localStorage.setItem("sliding-size", N); } catch (e) {} newGame(); });
+  addEventListener("resize", layout);
+  layout(); newGame();
+})();
+</script>
+</body>
+</html>

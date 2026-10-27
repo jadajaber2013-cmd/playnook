@@ -1,0 +1,21 @@
+{
+  "title": "Archery",
+  "category": "Sports",
+  "description": "Draw your bow and hit the bullseye. Watch the wind flag and adjust your aim — every round the target moves further away.",
+  "instructions": [
+    "Drag back to draw the bow, aim, and release to shoot.",
+    "Keyboard: Up and Down aim, hold Space to draw, release to shoot.",
+    "Check the wind arrow and aim to correct for it.",
+    "You have 10 arrows. Bullseye = 10 points."
+  ],
+  "tags": [
+    "archery",
+    "bow",
+    "target",
+    "wind"
+  ],
+  "added": "2026-09-25",
+  "popularity": 73,
+  "license": "Original",
+  "source": "Original work"
+}

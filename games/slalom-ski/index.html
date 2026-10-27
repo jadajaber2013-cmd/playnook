@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Slalom Ski</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f1f6ff; color: #1c1638; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #1c163899; color: #fff; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>⛷️ Slalom Ski<small>Steer with ← → / A D, or hold the left/right side of the screen.<br>Pass between each pair of flags. Missed gate = +3 s.<br>Press Space or tap to start</small></div></div>
+<script>
+(() => {
+  const GATES = 30, GAP = 260;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, U, sk, gates, trees, snow, trail, state = "menu", last = 0, keys = {}, touchDir = 0, dist, speed, timeMs, penalty, passed, missed, crashT, best = 0, flash = [];
+  try { best = +localStorage.getItem("slalom-ski-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; U = Math.min(W / 420, H / 640); c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  snow = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), s: 1 + Math.random() * 2 }));
+  function start() {
+    sk = { x: 0, vx: 0 }; dist = 0; speed = 260; timeMs = 0; penalty = 0; passed = 0; missed = 0; crashT = 0; trail = []; flash = [];
+    gates = []; trees = [];
+    let gx = 0;
+    for (let i = 0; i < GATES; i++) { gx = Math.max(-150, Math.min(150, gx + (Math.random() - 0.5) * 220)); gates.push({ y: 500 + i * GAP, x: gx, w: Math.max(90, 140 - i * 1.5), done: false }); }
+    for (let i = 0; i < GATES * 4; i++) { const y = 300 + Math.random() * GATES * GAP, g = gates.reduce((a, b) => (Math.abs(b.y - y) < Math.abs(a.y - y) ? b : a)); let tx; do { tx = (Math.random() - 0.5) * 520; } while (Math.abs(tx - g.x) < g.w * 0.8 + 40 && Math.abs(g.y - y) < 90); trees.push({ x: tx, y, kind: Math.random() < 0.8 ? "tree" : "rock" }); }
+    state = "play"; msg.hidden = true;
+  }
+  function update(dt) {
+    timeMs += dt * 1000;
+    const dir = (keys.left ? -1 : 0) + (keys.right ? 1 : 0) || touchDir;
+    if (crashT > 0) { crashT -= dt; speed = 120; } else speed = Math.min(520, speed + dt * 40 - Math.abs(sk.vx) * dt * 0.08);
+    sk.vx += dir * 1500 * dt; sk.vx *= Math.pow(0.08, dt); sk.vx = Math.max(-360, Math.min(360, sk.vx));
+    sk.x = Math.max(-240, Math.min(240, sk.x + sk.vx * dt));
+    dist += speed * dt;
+    trail.push([sk.x, dist]); if (trail.length > 160) trail.shift();
+    for (const g of gates) if (!g.done && dist >= g.y) {
+      g.done = true;
+      if (Math.abs(sk.x - g.x) < g.w / 2) { passed++; g.ok = true; flash.push({ text: "✓", x: g.x, y: g.y, life: 0.8, col: "#2b8a3e" }); }
+      else { missed++; penalty += 3000; g.ok = false; flash.push({ text: "+3s", x: g.x, y: g.y, life: 1, col: "#e03131" }); }
+    }
+    if (crashT <= 0) for (const t of trees) if (Math.abs(t.y - dist) < 14 && Math.abs(t.x - sk.x) < (t.kind === "tree" ? 22 : 18)) { crashT = 0.7; penalty += 1000; sk.vx = -Math.sign(t.x - sk.x) * 200; flash.push({ text: "Ouch! +1s", x: sk.x, y: dist, life: 1, col: "#e03131" }); }
+    if (dist > gates[GATES - 1].y + 300) {
+      state = "over"; const total = timeMs + penalty;
+      const nb = !best || total < best; if (nb) { best = total; try { localStorage.setItem("slalom-ski-best", best); } catch (e) {} }
+      show("🏁 Finish!", `Time ${(timeMs / 1000).toFixed(2)}s + ${(penalty / 1000).toFixed(0)}s penalty = <b>${(total / 1000).toFixed(2)}s</b><br>Gates ${passed}/${GATES}${nb ? " · 🏆 New record!" : ` · Best ${(best / 1000).toFixed(2)}s`}<br>Press Space or tap to ski again`);
+    }
+  }
+  function draw(dt) {
+    const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#eaf2ff"); g.addColorStop(1, "#ffffff"); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    const camY = (dist || 0) - 160, sy = (wy) => (wy - camY) * U + H * 0.08, sx = (wx) => W / 2 + wx * U;
+    x.fillStyle = "#dbe7fb"; for (let i = 0; i < 40; i++) { const yy = ((i * 83 - (dist || 0) * U) % (H + 60) + H + 60) % (H + 60) - 30; x.beginPath(); x.ellipse((i * 157) % W, yy, 30, 6, 0, 0, 7); x.fill(); }
+    if (trail && trail.length > 1) { x.strokeStyle = "#b8c8e8"; x.lineWidth = 3 * U; x.beginPath(); trail.forEach(([tx, ty], i) => { if (i) x.lineTo(sx(tx - 5), sy(ty)); else x.moveTo(sx(tx - 5), sy(ty)); }); x.stroke(); x.beginPath(); trail.forEach(([tx, ty], i) => (i ? x.lineTo(sx(tx + 5), sy(ty)) : x.moveTo(sx(tx + 5), sy(ty)))); x.stroke(); }
+    if (gates) {
+      for (const gt of gates) {
+        const yy = sy(gt.y); if (yy < -40 || yy > H + 40) continue;
+        const col = gt.done ? (gt.ok ? "#51cf66" : "#ff8787") : gates.indexOf(gt) % 2 ? "#e03131" : "#1c7ed6";
+        for (const s of [-1, 1]) { const fx = sx(gt.x + s * gt.w / 2); x.fillStyle = "#555"; x.fillRect(fx - 1.5, yy - 36 * U, 3, 36 * U); x.fillStyle = col; x.beginPath(); x.moveTo(fx, yy - 36 * U); x.lineTo(fx + s * 22 * U, yy - 28 * U); x.lineTo(fx, yy - 20 * U); x.fill(); }
+        if (!gt.done) { x.strokeStyle = col + "44"; x.setLineDash([6, 6]); x.lineWidth = 2; x.beginPath(); x.moveTo(sx(gt.x - gt.w / 2), yy); x.lineTo(sx(gt.x + gt.w / 2), yy); x.stroke(); x.setLineDash([]); }
+      }
+      for (const t of trees) {
+        const yy = sy(t.y); if (yy < -60 || yy > H + 20) continue; const tx = sx(t.x);
+        if (t.kind === "tree") { x.fillStyle = "#6b4420"; x.fillRect(tx - 3 * U, yy - 8 * U, 6 * U, 10 * U); x.fillStyle = "#2b8a3e"; for (let k = 0; k < 3; k++) { x.beginPath(); x.moveTo(tx, yy - (44 - k * 10) * U); x.lineTo(tx + (12 + k * 5) * U, yy - (16 - k * 7) * U); x.lineTo(tx - (12 + k * 5) * U, yy - (16 - k * 7) * U); x.fill(); } x.fillStyle = "#fff"; x.beginPath(); x.moveTo(tx, yy - 44 * U); x.lineTo(tx + 6 * U, yy - 34 * U); x.lineTo(tx - 6 * U, yy - 34 * U); x.fill(); }
+        else { x.fillStyle = "#868e96"; x.beginPath(); x.ellipse(tx, yy - 6 * U, 16 * U, 10 * U, 0, 0, 7); x.fill(); x.fillStyle = "#fff"; x.beginPath(); x.ellipse(tx - 2 * U, yy - 12 * U, 10 * U, 4 * U, 0, 0, 7); x.fill(); }
+      }
+      for (const f of flash) { f.life -= dt; x.globalAlpha = Math.max(0, f.life); x.fillStyle = f.col; x.font = `900 ${22 * U}px system-ui`; x.textAlign = "center"; x.fillText(f.text, sx(f.x), sy(f.y) - 50 * U - (1 - f.life) * 30); }
+      x.globalAlpha = 1; flash = flash.filter((f) => f.life > 0);
+    }
+    if (sk) {
+      const px = sx(sk.x), py = sy(dist), lean = sk.vx / 900;
+      x.save(); x.translate(px, py); x.rotate(lean + (crashT > 0 ? Math.sin(crashT * 30) * 0.4 : 0));
+      x.strokeStyle = "#1c1638"; x.lineWidth = 3 * U; x.beginPath(); x.moveTo(-7 * U, -16 * U); x.lineTo(-7 * U, 14 * U); x.moveTo(7 * U, -16 * U); x.lineTo(7 * U, 14 * U); x.stroke();
+      x.fillStyle = "#e03131"; x.beginPath(); x.roundRect(-9 * U, -22 * U, 18 * U, 22 * U, 6 * U); x.fill();
+      x.fillStyle = "#1c7ed6"; x.fillRect(-8 * U, -2 * U, 16 * U, 10 * U);
+      x.fillStyle = "#ffd8a8"; x.beginPath(); x.arc(0, -28 * U, 7 * U, 0, 7); x.fill(); x.fillStyle = "#ffd23f"; x.beginPath(); x.arc(0, -31 * U, 7 * U, Math.PI, 0); x.fill();
+      x.restore();
+    }
+    for (const s of snow) { s.y += s.s * 0.0015; s.x += Math.sin(s.y * 10) * 0.0005; if (s.y > 1) s.y = 0; x.fillStyle = "#c5d4ee"; x.beginPath(); x.arc(s.x * W, s.y * H, s.s, 0, 7); x.fill(); }
+    if (sk && state !== "menu") {
+      x.fillStyle = "#1c1638cc"; x.beginPath(); x.roundRect(10, 10, 200, 56, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 20px system-ui"; x.textAlign = "left"; x.fillText(`⏱ ${((timeMs + penalty) / 1000).toFixed(1)}s`, 22, 36);
+      x.font = "700 13px system-ui"; x.fillText(`Gate ${Math.min(passed + missed + 1, GATES)}/${GATES}${best ? ` · Best ${(best / 1000).toFixed(1)}s` : ""}`, 22, 56);
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || state === "over") start(); else if (state === "paused") { state = "play"; msg.hidden = true; } }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  addEventListener("pointerdown", (e) => { if (state === "menu" || state === "over") return start(); if (state === "paused") { state = "play"; msg.hidden = true; return; } touchDir = e.clientX < W / 2 ? -1 : 1; });
+  addEventListener("pointermove", (e) => { if (touchDir && e.buttons) touchDir = e.clientX < W / 2 ? -1 : 1; });
+  addEventListener("pointerup", () => (touchDir = 0)); addEventListener("pointercancel", () => (touchDir = 0));
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

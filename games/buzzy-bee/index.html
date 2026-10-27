@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Buzzy Bee</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd3ff; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-size: 34px; font-weight: 900; padding: 20px; text-shadow: 0 3px 0 #c76f00, 0 6px 16px #0005; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 700; margin-top: 10px; text-shadow: 0 2px 6px #0006; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"><div>🐝 Buzzy Bee<small>Tap, click or press Space to flap.<br>Fly through the gaps and grab the flowers!</small></div></div>
+<script>
+(() => {
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, U, bee, walls, pops, score, best = 0, state = "menu", last = 0, t = 0, shake = 0, scroll = 0, spawnX = 0;
+  try { best = +localStorage.getItem("buzzy-bee-best") || 0; } catch (e) {}
+  const clouds = Array.from({ length: 6 }, (_, i) => ({ x: i * 0.2 + Math.random() * 0.1, y: 0.08 + Math.random() * 0.3, s: 0.6 + Math.random() * 0.6 }));
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; U = H / 600; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+
+  function reset() { bee = { x: W * 0.28, y: H * 0.45, vy: 0 }; walls = []; pops = []; score = 0; spawnX = W + 60 * U; }
+  function start() { reset(); state = "play"; msg.hidden = true; flap(); }
+  function flap() { bee.vy = -340 * U; for (let i = 0; i < 4; i++) pops.push({ x: bee.x - 14 * U, y: bee.y + 8 * U, vx: -60 - Math.random() * 60, vy: (Math.random() - 0.3) * 60, life: 0.4, kind: "puff" }); }
+  function over() {
+    state = "over"; shake = 14;
+    if (score > best) { best = score; try { localStorage.setItem("buzzy-bee-best", best); } catch (e) {} }
+    setTimeout(() => show(score >= best && score > 0 ? "🏆 New best!" : "Bonk!", `Score: ${score} · Best: ${best}<br>Tap or press Space to fly again`), 500);
+  }
+
+  function update(dt) {
+    t += dt;
+    const speed = (170 + Math.min(score, 40) * 3) * U;
+    scroll += speed * dt;
+    bee.vy += 1000 * U * dt; bee.y += bee.vy * dt;
+    spawnX -= speed * dt;
+    if (spawnX < W) {
+      const gap = Math.max(150, 200 - score * 1.5) * U, top = 70 * U + Math.random() * (H - 140 * U - gap - 60 * U);
+      walls.push({ x: spawnX, top, gap, w: 70 * U, passed: false, flower: Math.random() < 0.55 });
+      spawnX += (250 + Math.random() * 60) * U;
+    }
+    for (const w of walls) {
+      w.x -= speed * dt;
+      if (!w.passed && w.x + w.w < bee.x) { w.passed = true; score++; pops.push({ x: bee.x, y: bee.y - 30 * U, vy: -60, vx: 0, life: 0.8, kind: "+1" }); }
+      const r = 16 * U;
+      if (bee.x + r > w.x && bee.x - r < w.x + w.w && (bee.y - r < w.top || bee.y + r > w.top + w.gap)) return over();
+      if (w.flower && Math.hypot(bee.x - (w.x + w.w / 2), bee.y - (w.top + w.gap / 2)) < 30 * U) {
+        w.flower = false; score += 3;
+        pops.push({ x: bee.x, y: bee.y - 30 * U, vy: -60, vx: 0, life: 0.9, kind: "+3 🌸" });
+        for (let i = 0; i < 10; i++) { const a = Math.random() * 7; pops.push({ x: bee.x, y: bee.y, vx: Math.cos(a) * 160, vy: Math.sin(a) * 160, life: 0.5, kind: "petal" }); }
+      }
+    }
+    walls = walls.filter((w) => w.x + w.w > -20);
+    if (bee.y > H - 40 * U || bee.y < -40 * U) over();
+  }
+
+  function hedge(px, py, w, h, capDown) {
+    x.fillStyle = "#2f9e44"; x.beginPath(); x.roundRect(px, py, w, h, 10 * U); x.fill();
+    x.fillStyle = "#40c057";
+    for (let yy = py + 8 * U; yy < py + h - 6 * U; yy += 22 * U) for (let xx = px + 10 * U; xx < px + w - 6 * U; xx += 22 * U) { x.beginPath(); x.arc(xx + ((yy / U) % 44 > 22 ? 8 * U : 0), yy, 7 * U, 0, 7); x.fill(); }
+    x.fillStyle = "#237a35"; x.beginPath(); x.roundRect(px - 6 * U, capDown ? py + h - 22 * U : py, w + 12 * U, 22 * U, 8 * U); x.fill();
+  }
+
+  function draw(dt) {
+    x.save();
+    if (shake > 0) { x.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake = Math.max(0, shake - dt * 40); }
+    const sky = x.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#6cc3ff"); sky.addColorStop(1, "#d9f3ff");
+    x.fillStyle = sky; x.fillRect(-20, -20, W + 40, H + 40);
+    x.fillStyle = "#fff7c2"; x.beginPath(); x.arc(W * 0.82, H * 0.16, 40 * U, 0, 7); x.fill();
+    for (const cl of clouds) {
+      const cx = ((cl.x * (W + 300) - scroll * 0.15 * cl.s) % (W + 300) + W + 300) % (W + 300) - 150, cy = cl.y * H;
+      x.fillStyle = "#ffffffd9"; x.beginPath(); x.arc(cx, cy, 26 * U * cl.s, 0, 7); x.arc(cx + 30 * U * cl.s, cy - 10 * U * cl.s, 32 * U * cl.s, 0, 7); x.arc(cx + 62 * U * cl.s, cy, 24 * U * cl.s, 0, 7); x.fill();
+    }
+    for (let layer = 0; layer < 2; layer++) {
+      x.fillStyle = layer ? "#7ed687" : "#a8e6a1";
+      const sp = layer ? 0.5 : 0.25, base = H - (layer ? 60 : 90) * U;
+      x.beginPath(); x.moveTo(0, H);
+      for (let px = 0; px <= W + 20; px += 20) x.lineTo(px, base - Math.sin((px + scroll * sp) / (120 * U)) * 26 * U - 20 * U);
+      x.lineTo(W, H); x.fill();
+    }
+    for (const w of walls) {
+      hedge(w.x, -20, w.w, w.top + 20, true);
+      hedge(w.x, w.top + w.gap, w.w, H - w.top - w.gap, false);
+      if (w.flower) {
+        const fx = w.x + w.w / 2, fy = w.top + w.gap / 2 + Math.sin(t * 3 + w.x) * 4;
+        x.fillStyle = "#ff8fc7"; for (let i = 0; i < 5; i++) { const a = i * 1.257 + t; x.beginPath(); x.arc(fx + Math.cos(a) * 9 * U, fy + Math.sin(a) * 9 * U, 7 * U, 0, 7); x.fill(); }
+        x.fillStyle = "#ffd23f"; x.beginPath(); x.arc(fx, fy, 6 * U, 0, 7); x.fill();
+      }
+    }
+    x.fillStyle = "#8b5a2b"; x.fillRect(0, H - 40 * U, W, 40 * U);
+    x.fillStyle = "#5cb85c"; x.fillRect(0, H - 44 * U, W, 8 * U);
+    for (const p of pops) {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; x.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+      if (p.kind === "puff") { x.fillStyle = "#fff"; x.beginPath(); x.arc(p.x, p.y, 4 * U, 0, 7); x.fill(); }
+      else if (p.kind === "petal") { x.fillStyle = "#ff8fc7"; x.beginPath(); x.arc(p.x, p.y, 4 * U, 0, 7); x.fill(); }
+      else { x.fillStyle = "#fff"; x.font = `900 ${22 * U}px system-ui`; x.textAlign = "center"; x.strokeStyle = "#c76f00"; x.lineWidth = 4; x.strokeText(p.kind, p.x, p.y); x.fillText(p.kind, p.x, p.y); }
+    }
+    x.globalAlpha = 1; pops = pops.filter((p) => p.life > 0);
+    if (bee) {
+      const by = state === "menu" ? H * 0.45 + Math.sin(t * 3) * 12 * U : bee.y;
+      x.save(); x.translate(bee.x, by); x.rotate(state === "menu" ? 0 : Math.max(-0.5, Math.min(1.1, bee.vy / (700 * U)))); x.scale(U, U);
+      const wing = Math.sin(t * 40) * 0.6;
+      x.fillStyle = "#ffffffcc"; x.save(); x.rotate(-0.6 + wing); x.beginPath(); x.ellipse(-2, -16, 8, 13, 0, 0, 7); x.fill(); x.restore();
+      x.fillStyle = "#ffd23f"; x.beginPath(); x.ellipse(0, 0, 20, 15, 0, 0, 7); x.fill();
+      x.fillStyle = "#2b2b2b"; x.fillRect(-8, -14, 5, 28); x.fillRect(2, -14, 5, 28);
+      x.beginPath(); x.moveTo(-20, 0); x.lineTo(-28, -3); x.lineTo(-28, 3); x.fill();
+      x.fillStyle = "#fff"; x.beginPath(); x.arc(12, -4, 6, 0, 7); x.fill(); x.fillStyle = "#111"; x.beginPath(); x.arc(14, -4, 3, 0, 7); x.fill();
+      x.fillStyle = "#ffffffaa"; x.save(); x.rotate(-0.2 - wing); x.beginPath(); x.ellipse(4, -16, 8, 13, 0, 0, 7); x.fill(); x.restore();
+      x.restore();
+    }
+    if (state !== "menu") {
+      x.fillStyle = "#fff"; x.strokeStyle = "#0004"; x.lineWidth = 6; x.font = `900 ${48 * U}px system-ui`; x.textAlign = "center";
+      x.strokeText(score, W / 2, 70 * U); x.fillText(score, W / 2, 70 * U);
+    }
+    x.restore();
+  }
+
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); else t += dt; draw(dt); requestAnimationFrame(loop); }
+  function act() {
+    if (state === "menu" || (state === "over" && !msg.hidden)) start();
+    else if (state === "play") flap();
+    else if (state === "paused") { state = "play"; msg.hidden = true; }
+  }
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === " " || k === "arrowup" || k === "w" || k === "enter") { e.preventDefault(); if (!e.repeat) act(); }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press P, Space or tap to continue"); }
+    else if (k === "p" && state === "paused") act();
+  });
+  addEventListener("pointerdown", (e) => { e.preventDefault(); act(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Tap or press Space to continue"); } });
+  reset(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

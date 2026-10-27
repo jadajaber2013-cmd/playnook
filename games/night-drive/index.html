@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Night Drive</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0420; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .tc { position: fixed; bottom: 16px; display: none; gap: 12px; }
+  .tc button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff8; background: #0005; color: #fff; font-size: 26px; touch-action: none; }
+  .tc button.on { background: #ff4fa366; }
+  #tl { left: 14px; } #tr { right: 14px; }
+  @media (pointer: coarse) { .tc { display: flex; } }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #000a; font-size: 34px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tc" id="tl"><button data-k="left" aria-label="Steer left">◀</button><button data-k="right" aria-label="Steer right">▶</button></div>
+<div class="tc" id="tr"><button data-k="down" aria-label="Brake">⏪</button></div>
+<div id="msg"><div>🌃 Night Drive<small>↑ / W gas · ↓ / S brake · ← → steer<br>Reach each checkpoint before time runs out!<br>On touch screens the gas is automatic.<br>Press Space or tap to drive</small></div></div>
+<script>
+(() => {
+  const SEG = 200, ROAD = 2000, DRAW = 160, CAM_H = 1000, DEPTH = 0.84, CHECK = 1500;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  const touch = matchMedia("(pointer: coarse)").matches;
+  let W, H, segs = [], pos, px, speed, cars, timeLeft, nextCheck, state = "menu", last = 0, keys = {}, t = 0, shake = 0, best = 0, banner = 0, total;
+  try { best = +localStorage.getItem("night-drive-best") || 0; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  const show = (a, b) => { msg.innerHTML = `<div>${a}<small>${b}</small></div>`; msg.hidden = false; };
+  function buildRoad() {
+    segs = []; let y = 0;
+    const add = (n, curve, hill) => { for (let i = 0; i < n; i++) { const e = Math.sin((i / n) * Math.PI); y += hill * e * 40; segs.push({ curve: curve * e, y, i: segs.length }); } };
+    for (let k = 0; k < 40; k++) add(60 + Math.floor(Math.random() * 80), (Math.random() - 0.5) * 7, (Math.random() - 0.5) * 3);
+  }
+  const segAt = (z) => segs[Math.floor(z / SEG) % segs.length];
+  function start() {
+    buildRoad(); pos = 0; px = 0; speed = 0; timeLeft = 35; nextCheck = CHECK; total = 0; banner = 0;
+    cars = Array.from({ length: 40 }, () => ({ z: 3000 + Math.random() * segs.length * SEG * 0.9, off: (Math.random() - 0.5) * 1.4, v: 2500 + Math.random() * 2500, col: `hsl(${Math.random() * 360},80%,60%)` }));
+    state = "play"; msg.hidden = true;
+  }
+  function update(dt) {
+    t += dt; const len = segs.length * SEG, max = 12000;
+    const gas = keys.up || (touch && !keys.down), brake = keys.down;
+    speed += (gas ? 6000 : -2500) * dt - (brake ? 9000 : 0) * dt;
+    if (Math.abs(px) > 1) speed -= 9000 * dt * (speed > 4000 ? 1 : 0);
+    speed = Math.max(0, Math.min(max, speed));
+    const steer = (keys.left ? -1 : 0) + (keys.right ? 1 : 0), sr = speed / max;
+    px += steer * dt * 2.6 * sr; px -= dt * 2 * sr * sr * segAt(pos + CAM_H).curve * 0.35;
+    px = Math.max(-2.2, Math.min(2.2, px));
+    pos = (pos + speed * dt) % len; total += speed * dt;
+    for (const car of cars) {
+      car.z = (car.z + car.v * dt) % len;
+      let dz = car.z - pos; if (dz < -len / 2) dz += len;
+      if (dz > 0 && dz < SEG * 1.2 && Math.abs(car.off - px) < 0.42) { speed = car.v * 0.5; shake = 14; px += px > car.off ? 0.3 : -0.3; }
+    }
+    timeLeft -= dt;
+    if (total / SEG / 10 >= nextCheck / 10) { nextCheck += CHECK; timeLeft += 22; banner = 2; }
+    banner -= dt;
+    if (timeLeft <= 0) {
+      state = "over"; const km = (total / SEG / 100).toFixed(1);
+      if (+km > best) { best = +km; try { localStorage.setItem("night-drive-best", best); } catch (e) {} }
+      show("⏰ Time's up!", `You drove ${km} km · Best ${best} km<br>Press Space or tap to drive again`);
+    }
+  }
+  function quad(col, x1, y1, w1, x2, y2, w2) { x.fillStyle = col; x.beginPath(); x.moveTo(x1 - w1, y1); x.lineTo(x2 - w2, y2); x.lineTo(x2 + w2, y2); x.lineTo(x1 + w1, y1); x.fill(); }
+  function draw(dt) {
+    x.save();
+    if (shake > 0) { x.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake = Math.max(0, shake - dt * 30); }
+    const sky = x.createLinearGradient(0, 0, 0, H * 0.6); sky.addColorStop(0, "#0b0420"); sky.addColorStop(1, "#5a1a6e"); x.fillStyle = sky; x.fillRect(-20, -20, W + 40, H + 40);
+    const curveSum = segs.length ? segs.slice(0, 1)[0].curve : 0;
+    x.fillStyle = "#ff4fa3"; x.beginPath(); x.arc(W / 2, H * 0.5, Math.min(W, H) * 0.18, Math.PI, 0); x.fill();
+    x.fillStyle = "#0b0420"; for (let i = 0; i < 6; i++) x.fillRect(W / 2 - Math.min(W, H) * 0.2, H * 0.5 - i * Math.min(W, H) * 0.03 - 4, Math.min(W, H) * 0.4, 3 + i * 0.6);
+    x.fillStyle = "#1a0b33"; x.beginPath(); x.moveTo(0, H * 0.5); for (let i = 0; i <= 20; i++) x.lineTo(i * W / 20, H * 0.5 - 30 - Math.abs(Math.sin(i * 1.7 + (pos || 0) / 40000)) * 60); x.lineTo(W, H * 0.5); x.fill();
+    if (!segs.length) buildRoad();
+    const p = pos || 0, base = Math.floor(p / SEG), camX = (px || 0) * ROAD, camY = CAM_H + segAt(p).y;
+    let dx = 0, xx = 0, maxY = H;
+    const proj = [];
+    for (let n = 0; n < DRAW; n++) {
+      const s = segs[(base + n) % segs.length], z = n * SEG - (p % SEG) + SEG;
+      xx += dx; dx += s.curve;
+      const scale = DEPTH / z * W * 0.5;
+      proj.push({ s, sx: W / 2 + (xx - camX) * scale, sy: H / 2 + (camY - s.y) * scale, sw: ROAD * scale, z, n });
+    }
+    for (let n = DRAW - 1; n > 0; n--) {
+      const a = proj[n - 1], b = proj[n]; if (b.sy >= a.sy) continue;
+      const alt = (a.s.i >> 2) % 2;
+      x.fillStyle = alt ? "#1d0f3a" : "#170a30"; x.fillRect(0, b.sy, W, a.sy - b.sy + 1);
+      quad(alt ? "#ff4fa3" : "#7cf7ff", a.sx, a.sy, a.sw * 1.12, b.sx, b.sy, b.sw * 1.12);
+      quad(alt ? "#2a2440" : "#25203a", a.sx, a.sy, a.sw, b.sx, b.sy, b.sw);
+      if (alt) { quad("#ffffffcc", a.sx, a.sy, a.sw * 0.02, b.sx, b.sy, b.sw * 0.02); }
+      if (a.s.i % 400 === 0) quad("#51cf66", a.sx, a.sy, a.sw, b.sx, b.sy, b.sw);
+    }
+    if (cars) {
+      const len = segs.length * SEG;
+      const vis = cars.map((car) => { let dz = car.z - p; if (dz < 0) dz += len; return { car, dz }; }).filter((o) => o.dz > SEG * 0.6 && o.dz < SEG * (DRAW - 2)).sort((a, b) => b.dz - a.dz);
+      for (const { car, dz } of vis) {
+        const n = Math.floor(dz / SEG), pr = proj[n]; if (!pr) continue;
+        const w = pr.sw * 0.36, cx = pr.sx + car.off * pr.sw, cy = pr.sy;
+        x.fillStyle = car.col; x.beginPath(); x.roundRect(cx - w / 2, cy - w * 0.55, w, w * 0.55, w * 0.1); x.fill();
+        x.fillStyle = "#ff2244"; x.shadowBlur = 12; x.shadowColor = "#ff2244"; x.fillRect(cx - w * 0.42, cy - w * 0.28, w * 0.18, w * 0.08); x.fillRect(cx + w * 0.24, cy - w * 0.28, w * 0.18, w * 0.08); x.shadowBlur = 0;
+      }
+    }
+    // player car
+    const cw = Math.min(W * 0.32, 260), cy = H - cw * 0.12 - 20, steerTilt = ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * 0.05;
+    x.save(); x.translate(W / 2, cy); x.rotate(steerTilt);
+    x.fillStyle = "#000a"; x.beginPath(); x.ellipse(0, 6, cw * 0.55, cw * 0.08, 0, 0, 7); x.fill();
+    x.fillStyle = "#ff4f7b"; x.beginPath(); x.moveTo(-cw / 2, 0); x.lineTo(-cw * 0.45, -cw * 0.22); x.lineTo(-cw * 0.28, -cw * 0.36); x.lineTo(cw * 0.28, -cw * 0.36); x.lineTo(cw * 0.45, -cw * 0.22); x.lineTo(cw / 2, 0); x.closePath(); x.fill();
+    x.fillStyle = "#1c1340"; x.beginPath(); x.moveTo(-cw * 0.25, -cw * 0.34); x.lineTo(cw * 0.25, -cw * 0.34); x.lineTo(cw * 0.36, -cw * 0.23); x.lineTo(-cw * 0.36, -cw * 0.23); x.fill();
+    x.shadowBlur = 16; x.shadowColor = "#ff2244"; x.fillStyle = "#ff2244"; x.fillRect(-cw * 0.46, -cw * 0.14, cw * 0.2, cw * 0.05); x.fillRect(cw * 0.26, -cw * 0.14, cw * 0.2, cw * 0.05); x.shadowBlur = 0;
+    x.fillStyle = "#111"; x.fillRect(-cw * 0.46, -2, cw * 0.14, 10); x.fillRect(cw * 0.32, -2, cw * 0.14, 10);
+    x.restore();
+    x.restore();
+    if (state !== "menu" && speed !== undefined) {
+      x.fillStyle = "#0009"; x.beginPath(); x.roundRect(10, 10, 210, 64, 14); x.fill();
+      x.fillStyle = timeLeft < 8 ? "#ff6b6b" : "#fff"; x.font = "900 26px system-ui"; x.textAlign = "left"; x.fillText(`⏱ ${Math.max(0, timeLeft).toFixed(1)}`, 22, 42);
+      x.fillStyle = "#fff"; x.font = "700 13px system-ui"; x.fillText(`${Math.round(speed / 40)} km/h · ${(total / SEG / 100).toFixed(1)} km · best ${best}`, 22, 62);
+      if (banner > 0) { x.globalAlpha = Math.min(1, banner); x.font = `900 ${Math.min(48, W / 10)}px system-ui`; x.textAlign = "center"; x.fillStyle = "#51cf66"; x.fillText("CHECKPOINT +22s", W / 2, H * 0.3); x.globalAlpha = 1; }
+    }
+  }
+  function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); else if (state === "menu") pos = ((pos || 0) + 3000 * dt) % (segs.length * SEG || 1); draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right", arrowup: "up", w: "up", arrowdown: "down", s: "down" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || state === "over") start(); else if (state === "paused") { state = "play"; msg.hidden = true; } }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  const held = new Map();
+  document.querySelectorAll(".tc button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
+    const up = (e) => { held.delete(e.pointerId); keys[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", keys[b.dataset.k]); };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+  });
+  msg.addEventListener("pointerdown", () => { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; show("Paused", "Press Space or tap to continue"); } });
+  buildRoad(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

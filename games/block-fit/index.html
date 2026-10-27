@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Block Fit</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #1f2a5a, #101632); color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; text-align: center; font-size: 30px; font-weight: 900; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #msg button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg" hidden><div id="msgIn"></div></div>
+<script>
+(() => {
+  const N = 8, COLS = ["#ff5d73", "#ffd23f", "#51cf66", "#4dabf7", "#b15cff", "#ff9f1c", "#2ec4b6"];
+  const SHAPES = ["1", "11", "1|1", "111", "1|1|1", "1111", "1|1|1|1", "11|11", "111|111|111", "10|11", "01|11", "11|10", "11|01", "111|100", "111|001", "100|111", "001|111", "111|010", "010|111", "110|011", "011|110", "11111", "1|1|1|1|1", "11|11|11"]
+    .map((s) => s.split("|").map((r) => r.split("").map(Number)));
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  let W, H, cell, bx, by, board, tray, score, best = 0, drag = null, fx = [], clearing = [], kSel = -1, kPos = [0, 0], t = 0, over = false;
+  try { best = +localStorage.getItem("block-fit-best") || 0; } catch (e) {}
+  function resize() {
+    const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0);
+    cell = Math.floor(Math.min((W - 24) / N, (H - 80) / (N + 4.2), 64)); bx = (W - cell * N) / 2; by = 64;
+  }
+  addEventListener("resize", resize); resize();
+  const newPiece = () => ({ s: SHAPES[Math.floor(Math.random() * SHAPES.length)], col: COLS[Math.floor(Math.random() * COLS.length)] });
+  function start() { board = Array.from({ length: N }, () => new Array(N).fill(null)); tray = [newPiece(), newPiece(), newPiece()]; score = 0; fx = []; over = false; msg.hidden = true; }
+  const fits = (s, r0, c0) => s.every((row, r) => row.every((v, cc) => !v || (r0 + r >= 0 && r0 + r < N && c0 + cc >= 0 && c0 + cc < N && !board[r0 + r][c0 + cc])));
+  const anyFit = (p) => { for (let r = 0; r < N; r++) for (let cc = 0; cc < N; cc++) if (fits(p.s, r, cc)) return true; return false; };
+  function place(i, r0, c0) {
+    const p = tray[i]; if (!p || !fits(p.s, r0, c0)) return false;
+    let cells = 0;
+    p.s.forEach((row, r) => row.forEach((v, cc) => { if (v) { board[r0 + r][c0 + cc] = { col: p.col, pop: 1 }; cells++; } }));
+    score += cells; tray[i] = null;
+    const rows = [], cols = [];
+    for (let k = 0; k < N; k++) { if (board[k].every(Boolean)) rows.push(k); if (board.every((row) => row[k])) cols.push(k); }
+    const lines = rows.length + cols.length;
+    if (lines) {
+      const set = new Set(); rows.forEach((r) => { for (let k = 0; k < N; k++) set.add(r * N + k); }); cols.forEach((cc) => { for (let k = 0; k < N; k++) set.add(k * N + cc); });
+      const bonus = lines * 10 * lines; score += bonus;
+      set.forEach((idx) => { const r = Math.floor(idx / N), cc = idx % N; clearing.push({ r, cc, col: board[r][cc].col, life: 0.45, delay: ((rows.includes(r) ? cc : r)) * 0.025 }); board[r][cc] = null; });
+      fx.push({ text: lines > 1 ? `${lines} lines! +${bonus}` : `+${bonus}`, x: bx + N * cell / 2, y: by + N * cell / 2, life: 1.1 });
+    }
+    if (tray.every((q) => !q)) tray = [newPiece(), newPiece(), newPiece()];
+    if (score > best) { best = score; try { localStorage.setItem("block-fit-best", best); } catch (e) {} }
+    if (!tray.some((q) => q && anyFit(q))) { over = true; setTimeout(() => { document.getElementById("msgIn").innerHTML = `🧱 No more room!<small>Score: ${score} · Best: ${best}</small><button type="button" id="go">Play again</button>`; msg.hidden = false; document.getElementById("go").onclick = start; }, 700); }
+    return true;
+  }
+  const traySlot = (i) => ({ x: W / 2 + (i - 1) * Math.min(W / 3, cell * 3.6), y: by + N * cell + cell * 2.3 });
+  function drawBlock(px, py, s, col, a = 1) {
+    x.globalAlpha = a;
+    x.fillStyle = col; x.beginPath(); x.roundRect(px + 1.5, py + 1.5, s - 3, s - 3, s * 0.18); x.fill();
+    x.fillStyle = "#ffffff55"; x.beginPath(); x.roundRect(px + s * 0.15, py + s * 0.12, s * 0.7, s * 0.2, s * 0.1); x.fill();
+    x.fillStyle = "#0002"; x.fillRect(px + 3, py + s * 0.78, s - 6, s * 0.12);
+    x.globalAlpha = 1;
+  }
+  function ghostTarget() {
+    if (drag) { const p = tray[drag.i]; const px = drag.x - p.s[0].length * cell / 2, py = drag.y - p.s.length * cell / 2 - drag.lift; return [Math.round((py - by) / cell), Math.round((px - bx) / cell)]; }
+    if (kSel >= 0 && tray[kSel]) return kPos;
+    return null;
+  }
+  function draw(dt) {
+    t += dt;
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = "#fff"; x.font = "900 26px system-ui"; x.textAlign = "left"; x.fillText(`⭐ ${score ?? 0}`, bx, 44); x.textAlign = "right"; x.font = "800 18px system-ui"; x.fillText(`🏆 ${best}`, bx + N * cell, 44);
+    x.fillStyle = "#ffffff12"; x.beginPath(); x.roundRect(bx - 6, by - 6, N * cell + 12, N * cell + 12, 14); x.fill();
+    const gt = ghostTarget(), gp = drag ? tray[drag.i] : kSel >= 0 ? tray[kSel] : null, ok = gt && gp && fits(gp.s, gt[0], gt[1]);
+    // highlight lines that would clear
+    const willClear = new Set();
+    if (ok) {
+      const tmp = board.map((row) => row.slice()); gp.s.forEach((row, r) => row.forEach((v, cc) => { if (v) tmp[gt[0] + r][gt[1] + cc] = 1; }));
+      for (let k = 0; k < N; k++) { if (tmp[k].every(Boolean)) for (let j = 0; j < N; j++) willClear.add(k * N + j); if (tmp.every((row) => row[k])) for (let j = 0; j < N; j++) willClear.add(j * N + k); }
+    }
+    for (let r = 0; r < N; r++) for (let cc = 0; cc < N; cc++) {
+      const px = bx + cc * cell, py = by + r * cell, b = board && board[r][cc];
+      x.fillStyle = "#ffffff0d"; x.beginPath(); x.roundRect(px + 2, py + 2, cell - 4, cell - 4, cell * 0.15); x.fill();
+      if (b) { b.pop = Math.max(0, (b.pop || 0) - dt * 5); const s = cell * (1 + b.pop * 0.15); drawBlock(px + (cell - s) / 2, py + (cell - s) / 2, s, b.col); if (willClear.has(r * N + cc)) { x.fillStyle = `rgba(255,255,255,${0.3 + Math.sin(t * 12) * 0.15})`; x.fillRect(px + 2, py + 2, cell - 4, cell - 4); } }
+    }
+    if (ok) gp.s.forEach((row, r) => row.forEach((v, cc) => { if (v) drawBlock(bx + (gt[1] + cc) * cell, by + (gt[0] + r) * cell, cell, gp.col, 0.35); }));
+    for (const k of clearing) {
+      if (k.delay > 0) { k.delay -= dt; drawBlock(bx + k.cc * cell, by + k.r * cell, cell, k.col); continue; }
+      k.life -= dt; const s = cell * Math.max(0, k.life / 0.45);
+      x.save(); x.translate(bx + (k.cc + 0.5) * cell, by + (k.r + 0.5) * cell); x.rotate((1 - k.life / 0.45) * 2); drawBlock(-s / 2, -s / 2, s, "#fff", Math.max(0, k.life * 2)); x.restore();
+    }
+    clearing = clearing.filter((k) => k.life > 0);
+    if (tray) tray.forEach((p, i) => {
+      if (!p || (drag && drag.i === i)) return;
+      const sl = traySlot(i), sc = cell * 0.55, can = anyFit(p);
+      const w = p.s[0].length * sc, h = p.s.length * sc;
+      if (kSel === i) { x.strokeStyle = "#7cf7ff"; x.lineWidth = 3; x.beginPath(); x.roundRect(sl.x - w / 2 - 8, sl.y - h / 2 - 8, w + 16, h + 16, 10); x.stroke(); }
+      p.s.forEach((row, r) => row.forEach((v, cc) => { if (v) drawBlock(sl.x - w / 2 + cc * sc, sl.y - h / 2 + r * sc, sc, p.col, can ? 1 : 0.3); }));
+      x.fillStyle = "#ffffff55"; x.font = "700 12px system-ui"; x.textAlign = "center"; x.fillText(i + 1, sl.x, sl.y + Math.max(h / 2, sc) + 18);
+    });
+    if (drag) { const p = tray[drag.i]; const w = p.s[0].length * cell, h = p.s.length * cell; p.s.forEach((row, r) => row.forEach((v, cc) => { if (v) drawBlock(drag.x - w / 2 + cc * cell, drag.y - h / 2 - drag.lift + r * cell, cell, p.col, 0.95); })); }
+    for (const f of fx) { f.life -= dt; f.y -= 40 * dt; x.globalAlpha = Math.max(0, Math.min(1, f.life * 2)); x.font = `900 ${cell * 0.7}px system-ui`; x.textAlign = "center"; x.lineWidth = 6; x.strokeStyle = "#0008"; x.strokeText(f.text, f.x, f.y); x.fillStyle = "#ffd23f"; x.fillText(f.text, f.x, f.y); }
+    x.globalAlpha = 1; fx = fx.filter((f) => f.life > 0);
+  }
+  let last = 0; function loop(now) { const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; draw(dt); requestAnimationFrame(loop); }
+  c.addEventListener("pointerdown", (e) => {
+    if (over) return;
+    tray.forEach((p, i) => { if (!p) return; const sl = traySlot(i); if (Math.abs(e.clientX - sl.x) < Math.min(W / 6, cell * 1.8) && Math.abs(e.clientY - sl.y) < cell * 1.6) drag = { i, x: e.clientX, y: e.clientY, lift: e.pointerType === "touch" ? cell * 1.6 : 0 }; });
+    kSel = -1;
+  });
+  addEventListener("pointermove", (e) => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; } });
+  addEventListener("pointerup", () => { if (!drag) return; const gt = ghostTarget(); if (gt) place(drag.i, gt[0], gt[1]); drag = null; });
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (/^[1-3]$/.test(k) && tray[+k - 1]) { kSel = +k - 1; kPos = [0, 0]; }
+    const m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); if (kSel < 0) kSel = tray.findIndex(Boolean); const p = tray[kSel]; if (p) kPos = [Math.max(0, Math.min(N - p.s.length, kPos[0] + m[0])), Math.max(0, Math.min(N - p.s[0].length, kPos[1] + m[1]))]; }
+    if (k === " " || k === "enter") { e.preventDefault(); if (!msg.hidden) return start(); if (kSel >= 0 && place(kSel, kPos[0], kPos[1])) kSel = tray.findIndex(Boolean); }
+  });
+  start(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

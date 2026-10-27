@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gem Sweeper</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #3d2a1a, #1a1208); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px; box-sizing: border-box; }
+  #top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-weight: 800; }
+  #top button, #top span { border: 0; border-radius: 999px; padding: 7px 12px; background: #ffffff1c; color: #fff; font: inherit; font-weight: 800; }
+  #top button { cursor: pointer; } #top button.on { background: #ffd23f; color: #3a2400; }
+  #board { display: grid; grid-template-columns: repeat(var(--w), var(--c)); gap: 2px; padding: 8px; background: #2a1d10; border-radius: 14px; box-shadow: 0 20px 50px #0008, inset 0 0 0 2px #ffffff14; }
+  #board.shake { animation: shake .4s; }
+  @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+  .t { width: var(--c); height: var(--c); border-radius: 5px; display: grid; place-items: center; font-weight: 900; font-size: calc(var(--c) * .55); cursor: pointer; background: linear-gradient(145deg, #7a5a3a, #5c4128); box-shadow: inset 0 -3px 0 #0004, inset 0 2px 0 #ffffff22; transition: transform .1s; }
+  .t:hover { filter: brightness(1.15); }
+  .t.open { background: #e8d5b5; box-shadow: none; cursor: default; animation: open .25s ease-out both; }
+  @keyframes open { from { transform: scale(.6); opacity: .3; } }
+  .t.rock { background: #e03131; }
+  .t.cur { outline: 3px solid #7cf7ff; outline-offset: 1px; }
+  .n1 { color: #3a86ff; } .n2 { color: #2b8a3e; } .n3 { color: #e03131; } .n4 { color: #5f3dc4; } .n5 { color: #c2410c; } .n6 { color: #0c8599; } .n7 { color: #222; } .n8 { color: #868e96; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; text-align: center; font-size: 30px; font-weight: 900; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin: 8px 0 14px; }
+  #msg button { border: 0; border-radius: 999px; padding: 12px 22px; background: #ffd23f; color: #3a2400; font: inherit; font-size: 17px; font-weight: 900; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"><button type="button" data-l="0">Easy</button><button type="button" data-l="1">Medium</button><button type="button" data-l="2">Hard</button><span id="flags">🚩 0</span><span id="time">⏱ 0</span><button type="button" id="mode">⛏️ Dig</button></div>
+  <div id="board"></div>
+  <div style="font-size:12px;opacity:.7;text-align:center">Right-click or long-press to flag · Keyboard: arrows, Space digs, F flags</div>
+</div>
+<div id="msg" hidden><div id="msgIn"></div></div>
+<script>
+(() => {
+  const LV = [[9, 9, 10], [12, 12, 22], [14, 16, 38]];
+  const boardEl = document.getElementById("board"), msg = document.getElementById("msg");
+  let li = 0, W, H, M, rocks, open, flag, els, started, over, startT, timer, cur = 0, flagMode = false;
+  try { li = +localStorage.getItem("gem-sweeper-level") || 0; } catch (e) {}
+  const nb = (i) => { const r = Math.floor(i / W), c = i % W, o = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < H && cc >= 0 && cc < W) o.push(rr * W + cc); } return o; };
+  const count = (i) => nb(i).filter((j) => rocks[j]).length;
+  function newGame() {
+    [W, H, M] = LV[li];
+    if (innerWidth < innerHeight && W > H) [W, H] = [H, W];
+    document.querySelectorAll("[data-l]").forEach((b) => b.classList.toggle("on", +b.dataset.l === li));
+    rocks = new Array(W * H).fill(false); open = new Array(W * H).fill(false); flag = new Array(W * H).fill(false);
+    started = false; over = false; clearInterval(timer); document.getElementById("time").textContent = "⏱ 0"; cur = Math.floor(W * H / 2);
+    const cs = Math.floor(Math.min((innerWidth - 30) / W, (innerHeight - 140) / H, 44));
+    boardEl.style.setProperty("--w", W); boardEl.style.setProperty("--c", cs - 2 + "px");
+    boardEl.innerHTML = ""; els = [];
+    for (let i = 0; i < W * H; i++) {
+      const d = document.createElement("div"); d.className = "t";
+      let lp;
+      d.addEventListener("pointerdown", (e) => { if (e.button === 2) return; lp = setTimeout(() => { lp = null; toggleFlag(i); if (navigator.vibrate) navigator.vibrate(20); }, 380); });
+      d.addEventListener("pointerup", (e) => { if (e.button === 2) return; if (lp) { clearTimeout(lp); lp = null; cur = i; flagMode ? toggleFlag(i) : dig(i); } });
+      d.addEventListener("pointerleave", () => { if (lp) { clearTimeout(lp); lp = null; } });
+      d.addEventListener("contextmenu", (e) => { e.preventDefault(); toggleFlag(i); });
+      boardEl.appendChild(d); els.push(d);
+    }
+    msg.hidden = true; render();
+  }
+  function plant(safe) {
+    const banned = new Set([safe, ...nb(safe)]); let n = 0;
+    while (n < M) { const i = Math.floor(Math.random() * W * H); if (!rocks[i] && !banned.has(i)) { rocks[i] = true; n++; } }
+    started = true; startT = Date.now(); timer = setInterval(() => (document.getElementById("time").textContent = "⏱ " + Math.floor((Date.now() - startT) / 1000)), 500);
+  }
+  function dig(i) {
+    if (over || flag[i]) return;
+    if (!started) plant(i);
+    if (open[i]) { // chord: open neighbours when flags match the number
+      const f = nb(i).filter((j) => flag[j]).length;
+      if (f && f === count(i)) nb(i).forEach((j) => { if (!open[j] && !flag[j]) dig(j); });
+      return;
+    }
+    if (rocks[i]) return lose(i);
+    const q = [[i, 0]]; open[i] = true;
+    for (let k = 0; k < q.length; k++) {
+      const [j, d] = q[k]; els[j].style.animationDelay = d * 25 + "ms";
+      if (!count(j)) nb(j).forEach((n) => { if (!open[n] && !flag[n]) { open[n] = true; q.push([n, d + 1]); } });
+    }
+    render();
+    if (open.filter((v, k) => v && !rocks[k]).length === W * H - M) win();
+  }
+  function toggleFlag(i) { if (over || open[i]) return; flag[i] = !flag[i]; render(); }
+  function render() {
+    els.forEach((d, i) => {
+      d.className = "t" + (open[i] ? " open" : "") + (i === cur && kbd ? " cur" : "");
+      if (open[i]) { const n = count(i); d.textContent = n || ""; if (n) d.classList.add("n" + n); }
+      else d.textContent = flag[i] ? "🚩" : over && rocks[i] ? "🪨" : "";
+    });
+    document.getElementById("flags").textContent = "🚩 " + (M - flag.filter(Boolean).length);
+  }
+  function lose(i) {
+    over = true; clearInterval(timer); render(); els[i].classList.add("rock");
+    rocks.forEach((r, k) => { if (r && k !== i) setTimeout(() => { els[k].textContent = "🪨"; }, 30 * (k % 20)); });
+    boardEl.classList.add("shake"); setTimeout(() => boardEl.classList.remove("shake"), 450);
+    setTimeout(() => end("💥 You hit a rock!", "Try again — the first dig is always safe."), 900);
+  }
+  function win() {
+    over = true; clearInterval(timer);
+    const s = Math.floor((Date.now() - startT) / 1000), k = "gem-sweeper-best-" + li;
+    let b = Infinity; try { b = +localStorage.getItem(k) || Infinity; } catch (e) {}
+    if (s < b) try { localStorage.setItem(k, s); } catch (e) {}
+    els.forEach((d, i) => { if (!open[i]) d.textContent = "💎"; });
+    setTimeout(() => end("💎 All gems found!", `Time: ${s}s${s < b ? " — new best!" : ` · Best: ${b}s`}`), 600);
+  }
+  function end(a, b) { document.getElementById("msgIn").innerHTML = `${a}<small>${b}</small><button type="button" id="again">Play again</button>`; msg.hidden = false; document.getElementById("again").onclick = newGame; }
+  let kbd = false;
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1], arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0] }[k];
+    if (m) { e.preventDefault(); kbd = true; const r = Math.max(0, Math.min(H - 1, Math.floor(cur / W) + m[0])), c = Math.max(0, Math.min(W - 1, cur % W + m[1])); cur = r * W + c; render(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (!msg.hidden) newGame(); else { kbd = true; dig(cur); } }
+    if (k === "f") { kbd = true; toggleFlag(cur); }
+  });
+  document.querySelectorAll("[data-l]").forEach((b) => b.addEventListener("click", () => { li = +b.dataset.l; try { localStorage.setItem("gem-sweeper-level", li); } catch (e) {} newGame(); }));
+  document.getElementById("mode").addEventListener("click", (e) => { flagMode = !flagMode; e.target.textContent = flagMode ? "🚩 Flag" : "⛏️ Dig"; e.target.classList.toggle("on", flagMode); });
+  newGame();
+})();
+</script>
+</body>
+</html>

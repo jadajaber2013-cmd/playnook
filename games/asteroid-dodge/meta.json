@@ -1,0 +1,21 @@
+{
+  "title": "Asteroid Dodge",
+  "category": "Arcade",
+  "description": "Pilot a tiny rocket through a never-ending asteroid storm. The rocks fall faster the longer you survive, so stay sharp and grab the golden stars for bonus points.",
+  "instructions": [
+    "Steer left and right with the arrow keys or A and D.",
+    "On a phone or tablet, hold the left or right side of the screen.",
+    "Collect ⭐ stars for +25 points.",
+    "Press P to pause."
+  ],
+  "tags": [
+    "space",
+    "dodge",
+    "rocket",
+    "reflex"
+  ],
+  "added": "2026-09-01",
+  "popularity": 90,
+  "license": "Original",
+  "source": "Original work"
+}

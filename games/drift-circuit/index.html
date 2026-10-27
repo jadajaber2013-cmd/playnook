@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Drift Circuit</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2f9e44; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .tc { position: fixed; bottom: 16px; display: none; gap: 12px; }
+  .tc button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff8; background: #0005; color: #fff; font-size: 26px; touch-action: none; }
+  .tc button.on { background: #fff6; }
+  #tl { left: 14px; } #tr { right: 14px; }
+  @media (pointer: coarse) { .tc { display: flex; } }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #000a; font-size: 32px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+  #msg button { margin: 6px; border: 0; border-radius: 999px; padding: 10px 16px; font: inherit; font-size: 15px; font-weight: 800; background: #fff; color: #222; cursor: pointer; }
+  #msg button.on { background: #ffd23f; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tc" id="tl"><button data-k="left" aria-label="Steer left">◀</button><button data-k="right" aria-label="Steer right">▶</button></div>
+<div class="tc" id="tr"><button data-k="down" aria-label="Brake">⏪</button></div>
+<div id="msg"></div>
+<script>
+(() => {
+  const TRACKS = [
+    ["Oval Park", [[200, 300], [800, 260], [980, 500], [800, 740], [200, 740], [40, 500]]],
+    ["Twisty Woods", [[150, 200], [520, 110], [880, 230], [920, 520], [660, 560], [620, 830], [300, 880], [110, 640], [360, 460]]],
+    ["Big Loop", [[100, 140], [620, 90], [960, 280], [720, 450], [960, 650], [640, 900], [160, 840], [320, 520]]]
+  ];
+  const LAPS = 3, TW = 130;
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  const touch = matchMedia("(pointer: coarse)").matches;
+  let W, H, ti = 0, path, car, state = "menu", keys = {}, last = 0, lap, lapStart, raceStart, lapTimes, marks = [], smoke = [], countdown = 0, best = {};
+  try { best = JSON.parse(localStorage.getItem("drift-circuit-best")) || {}; } catch (e) {}
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  function spline(pts) {
+    const out = [], n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      for (let k = 0; k < 24; k++) { const t = k / 24, t2 = t * t, t3 = t2 * t; out.push([0, 1].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); }
+    }
+    return out;
+  }
+  const fmt = (ms) => (ms / 1000).toFixed(2) + "s";
+  function menu(title = "🏁 Drift Circuit", sub = "Up / W = gas · Down / S = brake · ← → steer" + (touch ? "<br>On touch screens the gas is automatic." : "")) {
+    msg.innerHTML = `<div>${title}<small>${sub}</small><div style="margin-top:12px">${TRACKS.map((t, i) => `<button type="button" data-t="${i}" class="${i === ti ? "on" : ""}">${t[0]}${best[i] ? ` · ⏱ ${fmt(best[i])}` : ""}</button>`).join("")}</div><small>Pick a track to race</small></div>`;
+    msg.hidden = false;
+    msg.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { ti = +b.dataset.t; start(); }));
+  }
+  function start() {
+    path = spline(TRACKS[ti][1]);
+    const [a, b] = [path[0], path[1]];
+    car = { x: a[0] - (b[0] - a[0]) * 2, y: a[1] - (b[1] - a[1]) * 2, h: Math.atan2(b[1] - a[1], b[0] - a[0]), vx: 0, vy: 0, idx: 0, prog: 0 };
+    lap = 1; lapTimes = []; marks = []; smoke = []; countdown = 3; state = "play"; msg.hidden = true;
+  }
+  function nearest(px, py, around) {
+    let bi = around, bd = Infinity;
+    for (let k = -30; k <= 30; k++) { const i = (around + k + path.length) % path.length, d = (path[i][0] - px) ** 2 + (path[i][1] - py) ** 2; if (d < bd) { bd = d; bi = i; } }
+    return [bi, Math.sqrt(bd)];
+  }
+  function update(dt) {
+    if (countdown > 0) { countdown -= dt; if (countdown <= 0) { raceStart = lapStart = performance.now(); } return; }
+    const [idx, off] = nearest(car.x, car.y, car.idx);
+    const step = idx - car.idx; if (step < -path.length / 2) { if (car.prog > path.length * 0.7) newLap(); car.prog = 0; } else if (step > path.length / 2) {} else car.prog = Math.max(car.prog, car.prog + step);
+    car.idx = idx;
+    const grass = off > TW / 2;
+    const fx = Math.cos(car.h), fy = Math.sin(car.h);
+    let fv = car.vx * fx + car.vy * fy, lv = -car.vx * fy + car.vy * fx;
+    const gas = keys.up || (touch && !keys.down), brake = keys.down;
+    fv += (gas ? 380 : 0) * dt - (brake ? (fv > 0 ? 700 : 200) : 0) * dt;
+    fv *= Math.pow(grass ? 0.35 : 0.8, dt);
+    fv = Math.max(-120, Math.min(grass ? 170 : 430, fv));
+    const steer = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
+    car.h += steer * 2.7 * dt * Math.max(-1, Math.min(1, fv / 140));
+    lv += -steer * fv * 0.35 * dt * 3; // weight shift: kicks the tail out
+    lv *= Math.pow(brake ? 0.25 : 0.06, dt);
+    car.vx = fx * fv - fy * lv; car.vy = fy * fv + fx * lv;
+    car.x += car.vx * dt; car.y += car.vy * dt;
+    car.drift = Math.abs(lv);
+    if (car.drift > 50 && !grass) { marks.push([car.x - fx * 12, car.y - fy * 12]); if (marks.length > 1500) marks.shift(); if (Math.random() < 0.5) smoke.push({ x: car.x - fx * 14, y: car.y - fy * 14, r: 6, life: 0.7 }); }
+    else marks.push(null);
+    if (grass && Math.abs(fv) > 60 && Math.random() < 0.4) smoke.push({ x: car.x, y: car.y, r: 4, life: 0.4, col: "#7a5a2a" });
+  }
+  function newLap() {
+    const now = performance.now(); lapTimes.push(now - lapStart); lapStart = now;
+    if (lap >= LAPS) {
+      state = "over"; const total = now - raceStart, bestLap = Math.min(...lapTimes);
+      const nb = !best[ti] || bestLap < best[ti]; if (nb) { best[ti] = bestLap; try { localStorage.setItem("drift-circuit-best", JSON.stringify(best)); } catch (e) {} }
+      setTimeout(() => menu("🏁 Finished!", `Total ${fmt(total)} · Best lap ${fmt(bestLap)}${nb ? " 🏆 new record!" : ""}<br>Laps: ${lapTimes.map(fmt).join(" · ")}`), 600);
+    } else lap++;
+  }
+  function draw(dt) {
+    x.setTransform(1, 0, 0, 1, 0, 0); const d = Math.min(devicePixelRatio || 1, 2);
+    x.fillStyle = "#3a9d4a"; x.fillRect(0, 0, c.width, c.height);
+    if (!path) path = spline(TRACKS[ti][1]);
+    const zoom = Math.min(W, H) / 560;
+    const cx = car ? car.x + car.vx * 0.25 : 500, cy = car ? car.y + car.vy * 0.25 : 500;
+    x.setTransform(d * zoom, 0, 0, d * zoom, d * (W / 2 - cx * zoom), d * (H / 2 - cy * zoom));
+    x.fillStyle = "#43ad53"; for (let gx = -400; gx < 1500; gx += 80) for (let gy = -400; gy < 1400; gy += 80) if ((gx + gy) / 80 % 2 === 0) x.fillRect(gx, gy, 80, 80);
+    const line = (w, col, dash) => { x.strokeStyle = col; x.lineWidth = w; x.lineJoin = "round"; x.setLineDash(dash || []); x.beginPath(); path.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.stroke(); x.setLineDash([]); };
+    line(TW + 16, "#e03131"); line(TW + 16, "#fff", [18, 18]); line(TW, "#5c6070"); line(2, "#ffffff55", [20, 26]);
+    const [a, b] = [path[0], path[1]], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    x.save(); x.translate(a[0], a[1]); x.rotate(ang);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? "#111" : "#fff"; x.fillRect(j * 8 - 8, -TW / 2 + i * TW / 8, 8, TW / 8); }
+    x.restore();
+    x.strokeStyle = "#2228"; x.lineWidth = 5; x.beginPath(); let pen = false;
+    for (const m of marks) { if (!m) { pen = false; continue; } if (pen) x.lineTo(m[0], m[1]); else { x.moveTo(m[0], m[1]); pen = true; } }
+    x.stroke();
+    for (const s of smoke) { s.life -= dt; s.r += 30 * dt; x.globalAlpha = Math.max(0, s.life); x.fillStyle = s.col || "#ddd"; x.beginPath(); x.arc(s.x, s.y, s.r, 0, 7); x.fill(); }
+    x.globalAlpha = 1; smoke = smoke.filter((s) => s.life > 0);
+    if (car) {
+      x.save(); x.translate(car.x, car.y); x.rotate(car.h);
+      x.fillStyle = "#0005"; x.beginPath(); x.roundRect(-20, -11, 44, 26, 7); x.fill();
+      x.fillStyle = "#222"; x.fillRect(-16, -14, 10, 5); x.fillRect(8, -14, 10, 5); x.fillRect(-16, 9, 10, 5); x.fillRect(8, 9, 10, 5);
+      x.fillStyle = "#ff4f7b"; x.beginPath(); x.roundRect(-22, -11, 44, 22, 7); x.fill();
+      x.fillStyle = "#1c2a4a"; x.fillRect(-4, -8, 10, 16); x.fillStyle = "#fff"; x.fillRect(-22, -2, 44, 4);
+      x.fillStyle = "#fff9c4"; x.fillRect(18, -9, 4, 5); x.fillRect(18, 4, 4, 5);
+      x.restore();
+    }
+    x.setTransform(d, 0, 0, d, 0, 0);
+    if (car && state !== "menu") {
+      const now = performance.now(), cur = countdown > 0 || !lapStart ? 0 : now - lapStart;
+      x.fillStyle = "#0008"; x.beginPath(); x.roundRect(10, 10, 200, 74, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 20px system-ui"; x.textAlign = "left"; x.fillText(`Lap ${Math.min(lap, LAPS)}/${LAPS}  ${fmt(cur)}`, 22, 38);
+      x.font = "700 14px system-ui"; x.fillText(best[ti] ? `Best lap ${fmt(best[ti])}` : "No best lap yet", 22, 62);
+      if (car.drift > 90 && countdown <= 0) { x.font = "900 26px system-ui"; x.textAlign = "center"; x.fillStyle = "#ffd23f"; x.fillText("DRIFT!", W / 2, 60); }
+      if (countdown > 0) { x.font = "900 90px system-ui"; x.textAlign = "center"; x.fillStyle = "#fff"; x.strokeStyle = "#0008"; x.lineWidth = 8; const txt = Math.ceil(countdown); x.strokeText(txt, W / 2, H / 2); x.fillText(txt, W / 2, H / 2); }
+    }
+  }
+  function loop(now) { const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now; if (state === "play") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right", arrowup: "up", w: "up", arrowdown: "down", s: "down" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if ((k === " " || k === "enter") && state !== "play") { e.preventDefault(); if (state === "paused") { state = "play"; msg.hidden = true; } else start(); }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space to continue</small></div>"; msg.hidden = false; }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  const held = new Map();
+  document.querySelectorAll(".tc button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
+    const up = (e) => { held.delete(e.pointerId); keys[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", keys[b.dataset.k]); };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+  });
+  msg.addEventListener("pointerdown", (e) => { if (state === "paused") { state = "play"; msg.hidden = true; } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space or tap to continue</small></div>"; msg.hidden = false; } });
+  menu(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

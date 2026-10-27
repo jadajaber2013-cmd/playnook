@@ -1,0 +1,21 @@
+{
+  "title": "Kart Duel",
+  "category": "Racing",
+  "description": "Race against three computer karts around a colourful circuit. Take the inside line, hit the boost pads and finish first after three laps.",
+  "instructions": [
+    "Up / W to drive, Down / S to brake, Left and Right to steer.",
+    "On touch screens, use the on-screen buttons.",
+    "Drive over the arrow pads for a speed boost.",
+    "Finish 3 laps ahead of the other karts."
+  ],
+  "tags": [
+    "karts",
+    "race",
+    "laps",
+    "vs computer"
+  ],
+  "added": "2026-10-24",
+  "popularity": 83,
+  "license": "Original",
+  "source": "Original work"
+}

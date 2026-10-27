@@ -1,0 +1,22 @@
+{
+  "title": "Star Clicker",
+  "category": "Kids",
+  "description": "Tap the giant star to collect stardust, then spend it on gloves, comets, rockets and whole galaxies that collect stars for you. A cheerful idle clicker game that keeps going even while you take a break.",
+  "instructions": [
+    "Click or tap the big star to collect stars (or press Space).",
+    "Buy upgrades on the right to earn more per click or per second.",
+    "Press keys 1–6 to buy upgrades quickly.",
+    "Your progress saves automatically in this browser."
+  ],
+  "tags": [
+    "clicker",
+    "idle",
+    "incremental",
+    "space",
+    "casual"
+  ],
+  "added": "2026-10-26",
+  "popularity": 75,
+  "license": "Original",
+  "source": "Original work"
+}

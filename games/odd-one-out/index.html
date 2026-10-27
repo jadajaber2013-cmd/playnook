@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Odd One Out</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: linear-gradient(160deg, #e5dbff, #d0ebff); color: #1c1638; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 10px; box-sizing: border-box; }
+  #hud { display: flex; gap: 8px; font-weight: 900; }
+  #hud span { background: #fff; padding: 6px 14px; border-radius: 999px; box-shadow: 0 3px 0 #0001; }
+  #bar { width: min(90vw, 460px); height: 12px; background: #fff; border-radius: 6px; overflow: hidden; }
+  #bar i { display: block; height: 100%; background: linear-gradient(90deg, #7c5cff, #ff4fa3); transition: width .25s linear; }
+  #grid { display: grid; gap: 6px; grid-template-columns: repeat(var(--n), var(--c)); background: #fff; padding: 10px; border-radius: 22px; box-shadow: 0 16px 40px #3a2a8a22; }
+  .e { width: var(--c); height: var(--c); font-size: calc(var(--c) * .72); line-height: 1; display: grid; place-items: center; border: 0; background: #f8f9fa; border-radius: 14px; cursor: pointer; padding: 0; animation: in .3s cubic-bezier(.34,1.56,.64,1) both; transition: transform .12s; }
+  .e:hover { transform: scale(1.08); }
+  .e.cur { outline: 3px solid #7c5cff; }
+  .e.found { background: #b2f2bb; animation: win .6s; }
+  .e.bad { background: #ffc9c9; animation: shake .35s; }
+  @keyframes in { from { transform: scale(0); } }
+  @keyframes win { 50% { transform: scale(1.35) rotate(10deg); } }
+  @keyframes shake { 25%, 75% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; background: #1c163899; color: #fff; text-align: center; font-size: 32px; font-weight: 900; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 17px; font-weight: 600; margin: 10px 0 16px; }
+  #msg button { border: 0; border-radius: 999px; padding: 12px 24px; background: #ffd23f; font: 900 18px system-ui; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"><span id="score">⭐ 0</span><span id="lvl">Level 1</span><span id="best">🏆 0</span></div>
+  <div id="bar"><i id="fill" style="width:100%"></i></div>
+  <div id="grid"></div>
+</div>
+<div id="msg"><div>🔍 Odd One Out<small>One picture is different. Find it fast!<br>Tap it, or use the arrow keys and Space.</small><button type="button" id="go">Start</button></div></div>
+<script>
+(() => {
+  const PAIRS = [["😀", "😃"], ["🐶", "🐕"], ["🍎", "🍅"], ["🌕", "🌝"], ["🐱", "🐈"], ["🌸", "💮"], ["⭐", "🌟"], ["🍊", "🍑"], ["🚗", "🚙"], ["🐠", "🐟"], ["🍪", "🥠"], ["🌲", "🌳"], ["🙂", "🙃"], ["😺", "😸"], ["🐰", "🐇"], ["🍋", "🍌"], ["💙", "💜"], ["🐢", "🐊"], ["⚽", "🏐"], ["🎈", "🎀"]];
+  const grid = document.getElementById("grid"), msg = document.getElementById("msg");
+  let level, score, timeLeft, timer, odd, n, cur = 0, cells = [], best = 0, lock = false;
+  try { best = +localStorage.getItem("odd-one-out-best") || 0; } catch (e) {}
+  document.getElementById("best").textContent = "🏆 " + best;
+  let audio; function tone(f, d = 0.12) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.15, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + d); } catch (e) {} }
+  function start() { level = 1; score = 0; timeLeft = 40; msg.hidden = true; clearInterval(timer); timer = setInterval(tick, 200); build(); }
+  function tick() { timeLeft -= 0.2; document.getElementById("fill").style.width = Math.max(0, Math.min(100, timeLeft / 40 * 100)) + "%"; if (timeLeft <= 0) end(); }
+  function build() {
+    lock = false; n = Math.min(8, 2 + Math.floor((level - 1) / 2));
+    const [a, b] = PAIRS[Math.floor(Math.random() * PAIRS.length)], flip = Math.random() < 0.5;
+    const common = flip ? b : a, diff = flip ? a : b;
+    odd = Math.floor(Math.random() * n * n);
+    const cs = Math.floor(Math.min((innerWidth - 50) / n, (innerHeight - 160) / n, 84));
+    grid.style.setProperty("--n", n); grid.style.setProperty("--c", cs - 6 + "px");
+    grid.innerHTML = ""; cells = [];
+    for (let i = 0; i < n * n; i++) {
+      const e = document.createElement("button"); e.type = "button"; e.className = "e"; e.textContent = i === odd ? diff : common; e.style.animationDelay = (Math.floor(i / n) + (i % n)) * 18 + "ms";
+      e.setAttribute("aria-label", "Picture " + (i + 1)); e.onclick = () => pick(i); grid.appendChild(e); cells.push(e);
+    }
+    cur = Math.min(cur, n * n - 1); document.getElementById("lvl").textContent = "Level " + level; hud();
+  }
+  function hud() { document.getElementById("score").textContent = "⭐ " + score; cells.forEach((c, i) => c.classList.toggle("cur", kbd && i === cur)); }
+  function pick(i) {
+    if (lock || !msg.hidden) return;
+    if (i === odd) { lock = true; cells[i].classList.add("found"); score += 10 + Math.max(0, Math.round(timeLeft / 4)); timeLeft = Math.min(40, timeLeft + 3); level++; tone(660); setTimeout(() => tone(880), 90); setTimeout(build, 550); }
+    else { cells[i].classList.remove("bad"); void cells[i].offsetWidth; cells[i].classList.add("bad"); timeLeft -= 3; tone(150, 0.2); }
+    hud();
+  }
+  function end() {
+    clearInterval(timer); lock = true; cells[odd] && cells[odd].classList.add("found");
+    if (score > best) { best = score; try { localStorage.setItem("odd-one-out-best", best); } catch (e) {} document.getElementById("best").textContent = "🏆 " + best; }
+    setTimeout(() => { msg.innerHTML = `<div>⏰ Time's up!<small>Score ${score} · reached level ${level} · best ${best}</small><button type="button" id="go">Play again</button></div>`; msg.hidden = false; document.getElementById("go").onclick = start; }, 700);
+  }
+  let kbd = false;
+  addEventListener("keydown", (e) => {
+    if (!msg.hidden) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); start(); } return; }
+    const m = { arrowleft: -1, a: -1, arrowright: 1, d: 1, arrowup: -n, w: -n, arrowdown: n, s: n }[e.key.toLowerCase()];
+    if (m) { e.preventDefault(); kbd = true; const nx = cur + m; if (nx >= 0 && nx < n * n && !(Math.abs(m) === 1 && Math.floor(nx / n) !== Math.floor(cur / n))) cur = nx; hud(); }
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); kbd = true; pick(cur); }
+  });
+  document.getElementById("go").onclick = start;
+})();
+</script>
+</body>
+</html>

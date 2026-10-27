@@ -1,0 +1,21 @@
+{
+  "title": "Air Hockey",
+  "category": "Sports",
+  "description": "Fast, frantic air hockey against the computer. Smash the puck off the walls and into the goal — first to 7 wins.",
+  "instructions": [
+    "Move your mallet with the mouse or your finger.",
+    "Keyboard: arrow keys or WASD move your mallet.",
+    "Hit the puck into the top goal to score.",
+    "First to 7 points wins."
+  ],
+  "tags": [
+    "hockey",
+    "puck",
+    "table",
+    "vs computer"
+  ],
+  "added": "2026-09-08",
+  "popularity": 80,
+  "license": "Original",
+  "source": "Original work"
+}

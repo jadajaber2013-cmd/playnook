@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Kart Duel</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f4c27a; color: #fff; font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .tc { position: fixed; bottom: 16px; display: none; gap: 12px; }
+  .tc button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid #fff8; background: #0005; color: #fff; font-size: 26px; touch-action: none; }
+  .tc button.on { background: #fff6; }
+  #tl { left: 14px; } #tr { right: 14px; }
+  @media (pointer: coarse) { .tc { display: flex; } }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #000a; font-size: 32px; font-weight: 900; padding: 20px; }
+  #msg[hidden] { display: none; }
+  #msg small { display: block; font-size: 16px; font-weight: 600; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tc" id="tl"><button data-k="left" aria-label="Steer left">◀</button><button data-k="right" aria-label="Steer right">▶</button></div>
+<div class="tc" id="tr"><button data-k="down" aria-label="Brake">⏪</button></div>
+<div id="msg"><div>🏎️ Kart Duel<small>Up / W = drive · Down / S = brake · ← → steer<br>Hit the ▶▶ pads for a boost. Finish 3 laps in 1st place!<br>Press Space or tap to race</small></div></div>
+<script>
+(() => {
+  const PTS = [[140, 260], [460, 120], [820, 170], [1010, 420], [880, 640], [600, 600], [470, 800], [180, 840], [70, 560]];
+  const LAPS = 3, TW = 150, COLS = ["#ff4f7b", "#4dabf7", "#ffd23f", "#51cf66"], NAMES = ["You", "Blue", "Yellow", "Green"];
+  const c = document.getElementById("c"), x = c.getContext("2d"), msg = document.getElementById("msg");
+  const touch = matchMedia("(pointer: coarse)").matches;
+  let W, H, path, karts, state = "menu", keys = {}, last = 0, countdown = 0, boosts, finishOrder = [], t = 0, dust = [];
+  function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  addEventListener("resize", resize); resize();
+  function spline(pts) {
+    const out = [], n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      for (let k = 0; k < 24; k++) { const tt = k / 24, t2 = tt * tt, t3 = t2 * tt; out.push([0, 1].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * tt + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); }
+    }
+    return out;
+  }
+  path = spline(PTS); boosts = [30, 95, 150, 200].map((i) => i % path.length);
+  const L = path.length;
+  function start() {
+    const [a, b] = [path[0], path[1]], h = Math.atan2(b[1] - a[1], b[0] - a[0]), nx = -Math.sin(h), ny = Math.cos(h);
+    karts = COLS.map((col, i) => {
+      const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
+      return { x: a[0] - Math.cos(h) * (30 + row * 60) + nx * side * 34, y: a[1] - Math.sin(h) * (30 + row * 60) + ny * side * 34, h, vx: 0, vy: 0, idx: L - 2, lap: 0, prog: 0, col, ai: i > 0, skill: 0.86 + i * 0.035 + Math.random() * 0.03, boost: 0, done: false, wobble: Math.random() * 6 };
+    });
+    finishOrder = []; dust = []; countdown = 3; state = "play"; msg.hidden = true;
+  }
+  function nearest(px, py, around) { let bi = around, bd = Infinity; for (let k = -25; k <= 25; k++) { const i = (around + k + L) % L, d = (path[i][0] - px) ** 2 + (path[i][1] - py) ** 2; if (d < bd) { bd = d; bi = i; } } return [bi, Math.sqrt(bd)]; }
+  const total = (k) => k.lap * L + k.prog;
+  function drive(k, dt, gas, brake, steer) {
+    const [idx, off] = nearest(k.x, k.y, k.idx);
+    const step = idx - k.idx;
+    if (step < -L / 2) { if (k.prog > L * 0.7) { k.lap++; if (k.lap >= LAPS && !k.done) { k.done = true; finishOrder.push(k); } } k.prog = 0; } else if (step < L / 2) k.prog = Math.max(k.prog, k.prog + step);
+    k.idx = idx;
+    const grass = off > TW / 2;
+    if (boosts.some((b) => Math.abs(b - idx) < 2) && !grass) k.boost = 1.2;
+    k.boost = Math.max(0, k.boost - dt);
+    const fx = Math.cos(k.h), fy = Math.sin(k.h);
+    let fv = k.vx * fx + k.vy * fy, lv = -k.vx * fy + k.vy * fx;
+    fv += (gas ? 330 : 0) * dt - (brake ? 600 : 0) * dt;
+    fv *= Math.pow(grass ? 0.3 : 0.75, dt);
+    const max = (grass ? 150 : 330) * (k.boost > 0 ? 1.45 : 1) * (k.ai ? k.skill : 1);
+    if (k.boost > 0) fv += 500 * dt;
+    fv = Math.max(-100, Math.min(max, fv));
+    k.h += steer * 2.6 * dt * Math.max(-1, Math.min(1, fv / 120));
+    lv *= Math.pow(0.03, dt);
+    k.vx = fx * fv - fy * lv; k.vy = fy * fv + fx * lv;
+    k.x += k.vx * dt; k.y += k.vy * dt;
+    if (grass && Math.abs(fv) > 60 && Math.random() < 0.3) dust.push({ x: k.x, y: k.y, r: 4, life: 0.5 });
+    if (k.boost > 0 && Math.random() < 0.6) dust.push({ x: k.x - fx * 18, y: k.y - fy * 18, r: 5, life: 0.4, col: "#ff9f1c" });
+  }
+  function update(dt) {
+    t += dt;
+    if (countdown > 0) { countdown -= dt; return; }
+    karts.forEach((k) => {
+      if (k.done && !k.ai) return;
+      if (!k.ai) { drive(k, dt, keys.up || (touch && !keys.down), keys.down, (keys.left ? -1 : 0) + (keys.right ? 1 : 0)); return; }
+      const look = path[(k.idx + 9) % L], side = Math.sin(t * 0.7 + k.wobble) * 22;
+      const tx = look[0] + Math.cos(t + k.wobble) * side * 0.3, ty = look[1] + side * 0.3;
+      let want = Math.atan2(ty - k.y, tx - k.x) - k.h; while (want > Math.PI) want -= Math.PI * 2; while (want < -Math.PI) want += Math.PI * 2;
+      drive(k, dt, Math.abs(want) < 0.9, Math.abs(want) > 1.1, Math.max(-1, Math.min(1, want * 3)));
+    });
+    // bump karts apart
+    for (let i = 0; i < karts.length; i++) for (let j = i + 1; j < karts.length; j++) {
+      const a = karts[i], b = karts[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d < 30 && d > 0) { const push = (30 - d) / 2, nx = dx / d, ny = dy / d; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push; }
+    }
+    const me = karts[0];
+    if (me.done && state === "play") {
+      state = "over"; const pos = finishOrder.indexOf(me) + 1;
+      setTimeout(() => { msg.innerHTML = `<div>${["🥇 You win!", "🥈 2nd place!", "🥉 3rd place", "4th place"][pos - 1]}<small>Press Space or tap to race again</small></div>`; msg.hidden = false; }, 800);
+    }
+  }
+  function kart(k) {
+    x.save(); x.translate(k.x, k.y); x.rotate(k.h);
+    x.fillStyle = "#0004"; x.beginPath(); x.ellipse(3, 4, 20, 13, 0, 0, 7); x.fill();
+    x.fillStyle = "#222"; x.fillRect(-14, -14, 9, 6); x.fillRect(7, -14, 9, 6); x.fillRect(-14, 8, 9, 6); x.fillRect(7, 8, 9, 6);
+    x.fillStyle = k.col; x.beginPath(); x.roundRect(-17, -9, 34, 18, 7); x.fill();
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(-2, 0, 6, 0, 7); x.fill();
+    x.fillStyle = k.col; x.beginPath(); x.arc(-2, 0, 4, 0, 7); x.fill();
+    x.restore();
+  }
+  function draw(dt) {
+    const d = Math.min(devicePixelRatio || 1, 2);
+    x.setTransform(d, 0, 0, d, 0, 0); x.fillStyle = "#e9b45f"; x.fillRect(0, 0, W, H);
+    const me = karts ? karts[0] : { x: 550, y: 500, vx: 0, vy: 0 };
+    const zoom = Math.min(W, H) / 580, cx = me.x + me.vx * 0.2, cy = me.y + me.vy * 0.2;
+    x.setTransform(d * zoom, 0, 0, d * zoom, d * (W / 2 - cx * zoom), d * (H / 2 - cy * zoom));
+    x.fillStyle = "#f4c27a"; for (let i = 0; i < 60; i++) { const px = (i * 173) % 1300 - 150, py = (i * 97) % 1200 - 150; x.beginPath(); x.arc(px, py, 30 + (i % 4) * 10, 0, 7); x.fill(); }
+    x.font = "34px system-ui"; x.textAlign = "center"; x.textBaseline = "middle"; for (let i = 0; i < 26; i++) x.fillText(i % 3 ? "🌵" : "🪨", (i * 211) % 1300 - 120, (i * 137) % 1150 - 100);
+    const line = (w, col, dash) => { x.strokeStyle = col; x.lineWidth = w; x.lineJoin = "round"; x.setLineDash(dash || []); x.beginPath(); path.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.stroke(); x.setLineDash([]); };
+    line(TW + 18, "#3a86ff"); line(TW + 18, "#fff", [20, 20]); line(TW, "#555a66"); line(3, "#ffffff44", [24, 30]);
+    boosts.forEach((bi) => { const p = path[bi], q = path[(bi + 1) % L], a = Math.atan2(q[1] - p[1], q[0] - p[0]); x.save(); x.translate(p[0], p[1]); x.rotate(a); x.fillStyle = `hsl(${40 + Math.sin(t * 8) * 10},100%,55%)`; x.beginPath(); x.roundRect(-22, -22, 44, 44, 8); x.fill(); x.fillStyle = "#fff"; x.font = "900 24px system-ui"; x.fillText("▶▶", 0, 2); x.restore(); });
+    const [a, b] = [path[0], path[1]], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    x.save(); x.translate(a[0], a[1]); x.rotate(ang); for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? "#111" : "#fff"; x.fillRect(j * 9 - 9, -TW / 2 + i * TW / 10, 9, TW / 10); } x.restore();
+    for (const s of dust) { s.life -= dt; s.r += 20 * dt; x.globalAlpha = Math.max(0, s.life * 1.5); x.fillStyle = s.col || "#c9965a"; x.beginPath(); x.arc(s.x, s.y, s.r, 0, 7); x.fill(); }
+    x.globalAlpha = 1; dust = dust.filter((s) => s.life > 0);
+    if (karts) karts.slice().reverse().forEach(kart);
+    x.setTransform(d, 0, 0, d, 0, 0);
+    if (karts && state !== "menu") {
+      const order = karts.slice().sort((p, q) => (q.done && p.done ? finishOrder.indexOf(p) - finishOrder.indexOf(q) : total(q) - total(p) + (q.done ? 1e6 : 0) - (p.done ? 1e6 : 0)));
+      const pos = order.indexOf(me) + 1;
+      x.fillStyle = "#0008"; x.beginPath(); x.roundRect(10, 10, 150, 126, 14); x.fill();
+      x.fillStyle = "#fff"; x.font = "900 30px system-ui"; x.textAlign = "left"; x.textBaseline = "alphabetic"; x.fillText(["1st", "2nd", "3rd", "4th"][pos - 1], 22, 46);
+      x.font = "800 15px system-ui"; x.fillText(`Lap ${Math.min(me.lap + 1, LAPS)} / ${LAPS}`, 22, 68);
+      order.forEach((k, i) => { x.fillStyle = k.col; x.fillText(`${i + 1}. ${NAMES[karts.indexOf(k)]}`, 22, 90 + i * 14 * 1); });
+      if (countdown > 0) { x.font = "900 90px system-ui"; x.textAlign = "center"; x.fillStyle = "#fff"; x.strokeStyle = "#0008"; x.lineWidth = 8; const txt = Math.ceil(countdown); x.strokeText(txt, W / 2, H / 2); x.fillText(txt, W / 2, H / 2); }
+      else if (countdown > -0.8) { countdown -= dt; x.font = "900 70px system-ui"; x.textAlign = "center"; x.fillStyle = "#51cf66"; x.fillText("GO!", W / 2, H / 2); }
+    }
+  }
+  function loop(now) { const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now; if (state === "play" || state === "over") update(dt); draw(dt); requestAnimationFrame(loop); }
+  const MAP = { arrowleft: "left", a: "left", arrowright: "right", d: "right", arrowup: "up", w: "up", arrowdown: "down", s: "down" };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (MAP[k]) { keys[MAP[k]] = true; e.preventDefault(); }
+    if (k === " " || k === "enter") { e.preventDefault(); if (state === "menu" || (state === "over" && !msg.hidden)) start(); else if (state === "paused") { state = "play"; msg.hidden = true; } }
+    if ((k === "p" || k === "escape") && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space or tap to continue</small></div>"; msg.hidden = false; }
+  });
+  addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
+  const held = new Map();
+  document.querySelectorAll(".tc button").forEach((b) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
+    const up = (e) => { held.delete(e.pointerId); keys[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", keys[b.dataset.k]); };
+    b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
+  });
+  msg.addEventListener("pointerdown", () => { if (state === "paused") { state = "play"; msg.hidden = true; } else start(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") { state = "paused"; msg.innerHTML = "<div>Paused<small>Press Space or tap to continue</small></div>"; msg.hidden = false; } });
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

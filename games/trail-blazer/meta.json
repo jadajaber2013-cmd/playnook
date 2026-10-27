@@ -1,0 +1,21 @@
+{
+  "title": "Trail Blazer",
+  "category": "Arcade",
+  "description": "Race your light-bike around the arena, leaving a glowing trail behind you. Trap the computer bikes in your trail before they trap you!",
+  "instructions": [
+    "Turn with the arrow keys or WASD.",
+    "On touch screens, swipe to turn or use the on-screen arrows.",
+    "Don't crash into walls or any trail.",
+    "Be the last bike riding to win the round."
+  ],
+  "tags": [
+    "light bike",
+    "trail",
+    "neon",
+    "vs computer"
+  ],
+  "added": "2026-10-19",
+  "popularity": 74,
+  "license": "Original",
+  "source": "Original work"
+}

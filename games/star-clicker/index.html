@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Star Clicker</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; color: #fff; background: radial-gradient(ellipse at top, #4b2a8a, #160b33 70%); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: grid; grid-template-columns: 1fr minmax(240px, 340px); box-sizing: border-box; }
+  #left { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; position: relative; overflow: hidden; }
+  #count { font-size: clamp(28px, 7vw, 48px); font-weight: 900; text-shadow: 0 3px 10px #0008; }
+  #rate { opacity: .85; font-weight: 600; }
+  #star { width: min(56vw, 46vh, 300px); aspect-ratio: 1; border: 0; background: none; cursor: pointer; padding: 0; filter: drop-shadow(0 8px 24px #ffd23f88); transition: transform .06s; -webkit-tap-highlight-color: transparent; }
+  #star:active, #star.hit { transform: scale(.92); }
+  #star:focus-visible { outline: 4px dashed #ffd23f; outline-offset: 8px; border-radius: 50%; }
+  #star svg { width: 100%; height: 100%; animation: spin 30s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pop { position: absolute; pointer-events: none; font-weight: 900; font-size: 22px; color: #ffe680; animation: up .8s ease-out forwards; text-shadow: 0 2px 4px #0008; }
+  @keyframes up { to { transform: translateY(-80px); opacity: 0; } }
+  #shop { background: #0006; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  #items { display: grid; gap: 8px; }
+  #shop h2 { margin: 2px 0 4px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+  #shop h2 button { font: inherit; font-size: 12px; background: none; color: #fffa; border: 1px solid #fff5; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+  .item { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; text-align: left; border: 0; border-radius: 12px; padding: 8px 10px; background: #ffffff1a; color: #fff; font: inherit; cursor: pointer; }
+  .item:not(:disabled):hover { background: #ffffff2e; }
+  .item:disabled { opacity: .45; cursor: default; }
+  .item .ic { font-size: 28px; text-align: center; }
+  .item b { display: block; }
+  .item small { opacity: .8; }
+  .item .cost { font-weight: 800; color: #ffd23f; white-space: nowrap; }
+  .item .own { font-size: 20px; font-weight: 900; opacity: .6; }
+  #tip { font-size: 12px; opacity: .65; text-align: center; margin-top: auto; }
+  @media (max-width: 640px), (max-aspect-ratio: 1/1) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    #shop { max-height: 44vh; }
+    #star { width: min(60vw, 30vh, 260px); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <div id="count">0 ⭐</div>
+    <div id="rate">0 per second</div>
+    <button id="star" type="button" aria-label="Collect a star">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="g"><stop offset="0" stop-color="#fff7c2"/><stop offset=".6" stop-color="#ffd23f"/><stop offset="1" stop-color="#ff9f1c"/></radialGradient></defs><path d="M50 4l13.5 28 30.5 4.2-22.2 21.3 5.5 30.3L50 73.3 22.7 87.8l5.5-30.3L6 36.2l30.5-4.2z" fill="url(#g)" stroke="#fff6" stroke-width="2" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div id="shop">
+    <h2>Upgrades <button type="button" id="reset">Reset</button></h2>
+    <div id="items"></div>
+    <div id="tip">Click / tap the star or press Space. Keys 1–6 buy upgrades. Progress saves automatically.</div>
+  </div>
+</div>
+<script>
+(() => {
+  const UPGRADES = [
+    { id: "glove", icon: "🧤", name: "Star Glove", desc: "+1 per click", base: 15, click: 1 },
+    { id: "comet", icon: "☄️", name: "Little Comet", desc: "+1 per second", base: 50, auto: 1 },
+    { id: "telescope", icon: "🔭", name: "Telescope", desc: "+5 per second", base: 300, auto: 5 },
+    { id: "rocket", icon: "🚀", name: "Rocket", desc: "+10 per click", base: 1200, click: 10 },
+    { id: "moon", icon: "🌙", name: "Moon Base", desc: "+40 per second", base: 5000, auto: 40 },
+    { id: "galaxy", icon: "🌌", name: "Galaxy", desc: "+250 per second", base: 40000, auto: 250 }
+  ];
+  const KEY = "star-clicker-save";
+  let state = { stars: 0, total: 0, owned: {} };
+  try { Object.assign(state, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+
+  const countEl = document.getElementById("count"), rateEl = document.getElementById("rate"), itemsEl = document.getElementById("items");
+  const star = document.getElementById("star"), left = document.getElementById("left");
+
+  const fmt = (n) => {
+    n = Math.floor(n);
+    if (n < 1e4) return n.toLocaleString();
+    const units = ["K", "M", "B", "T"];
+    let u = -1;
+    while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
+    return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[u];
+  };
+  const owned = (u) => state.owned[u.id] || 0;
+  const cost = (u) => Math.ceil(u.base * Math.pow(1.15, owned(u)));
+  const perClick = () => 1 + UPGRADES.reduce((s, u) => s + (u.click || 0) * owned(u), 0);
+  const perSec = () => UPGRADES.reduce((s, u) => s + (u.auto || 0) * owned(u), 0);
+
+  const buttons = UPGRADES.map((u, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "item";
+    b.innerHTML = `<span class="ic">${u.icon}</span><span><b>${i + 1}. ${u.name}</b><small>${u.desc}</small><br><span class="cost"></span></span><span class="own"></span>`;
+    b.addEventListener("click", () => buy(u));
+    itemsEl.appendChild(b);
+    return b;
+  });
+
+  function buy(u) {
+    const c = cost(u);
+    if (state.stars < c) return;
+    state.stars -= c;
+    state.owned[u.id] = owned(u) + 1;
+    render(); save();
+  }
+
+  function collect(x, y) {
+    const n = perClick();
+    state.stars += n; state.total += n;
+    const p = document.createElement("div");
+    p.className = "pop"; p.textContent = "+" + fmt(n);
+    const r = left.getBoundingClientRect();
+    p.style.left = (x - r.left - 10 + (Math.random() * 30 - 15)) + "px";
+    p.style.top = (y - r.top - 20) + "px";
+    left.appendChild(p);
+    setTimeout(() => p.remove(), 800);
+    render();
+  }
+
+  function render() {
+    countEl.textContent = fmt(state.stars) + " ⭐";
+    rateEl.textContent = fmt(perSec()) + " per second · " + fmt(perClick()) + " per click";
+    UPGRADES.forEach((u, i) => {
+      const b = buttons[i];
+      b.disabled = state.stars < cost(u);
+      b.querySelector(".cost").textContent = "⭐ " + fmt(cost(u));
+      b.querySelector(".own").textContent = owned(u) || "";
+    });
+  }
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  star.addEventListener("pointerdown", (e) => { e.preventDefault(); collect(e.clientX, e.clientY); star.classList.add("hit"); });
+  star.addEventListener("pointerup", () => star.classList.remove("hit"));
+  star.addEventListener("pointerleave", () => star.classList.remove("hit"));
+  star.addEventListener("click", (e) => { if (e.detail === 0) { const r = star.getBoundingClientRect(); collect(r.left + r.width / 2, r.top + r.height / 3); } }); // keyboard "click"
+
+  addEventListener("keydown", (e) => {
+    if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (document.activeElement && document.activeElement.classList.contains("item")) return document.activeElement.click();
+      const r = star.getBoundingClientRect();
+      collect(r.left + r.width / 2, r.top + r.height / 3);
+      star.classList.add("hit"); setTimeout(() => star.classList.remove("hit"), 80);
+    } else if (/^[1-6]$/.test(e.key)) buy(UPGRADES[+e.key - 1]);
+  });
+
+  document.getElementById("reset").addEventListener("click", () => {
+    if (confirm("Start over? All stars and upgrades will be lost.")) { state = { stars: 0, total: 0, owned: {} }; save(); render(); }
+  });
+
+  let last = performance.now(), saveTimer = 0;
+  setInterval(() => {
+    const now = performance.now(), dt = (now - last) / 1000; last = now;
+    const gain = perSec() * dt;
+    state.stars += gain; state.total += gain;
+    render();
+    if ((saveTimer += dt) > 3) { saveTimer = 0; save(); }
+  }, 100);
+  addEventListener("pagehide", save);
+  render();
+})();
+</script>
+</body>
+</html>
