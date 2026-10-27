@@ -6,7 +6,7 @@
 
 module.exports = {
   // Your site's name. Shown in the header, page titles and footer.
-  name: "PlayNook",
+  name: "Plinkora",
 
   // A short slogan shown on the homepage and in search results.
   tagline: "Free browser games. No downloads, no sign-ups — just play.",
@@ -14,13 +14,13 @@ module.exports = {
   // The full address of your live site, WITHOUT a trailing slash.
   // Change this once you have a domain (or your *.pages.dev address).
   // It is used for SEO tags, the sitemap and robots.txt.
-  url: "https://playnook-3we.pages.dev",
+  url: "https://plinkora.pages.dev",
 
   // Shown on the Contact and Privacy pages.
   contactEmail: "hello@example.com",
 
   // Who runs the site (shown on the About and Privacy pages).
-  owner: "The PlayNook team",
+  owner: "The Plinkora team",
 
   // Language of the site (used in <html lang="..">).
   language: "en",
@@ -28,7 +28,7 @@ module.exports = {
   // Name of your Cloudflare Pages project. The GitHub Action deploys
   // to this project (it is created automatically on first deploy).
   // Use lowercase letters, numbers and dashes only.
-  cloudflareProject: "playnook",
+  cloudflareProject: "plinkora",
 
   // The game categories. Every game's meta.json "category" must be
   // one of these names. Order here = order of the filter chips.

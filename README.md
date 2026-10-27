@@ -1,4 +1,4 @@
-# PlayNook — a free browser games website
+# Plinkora — a free browser games website
 
 A fast, colourful games site (in the style of CrazyGames / Poki) built with plain HTML, CSS and
 vanilla JavaScript. There are **no frameworks, no npm packages and no paid services**. It runs free on
@@ -8,7 +8,7 @@ Cloudflare Pages.
 the whole website: homepage, category pages, game pages, sitemap, search and SEO tags. To add a game,
 you drop in a folder and push to GitHub. The site rebuilds and deploys itself.
 
-> "PlayNook" is a placeholder name. Change it (and everything else about the site) in **`site.config.js`**.
+> "Plinkora" is the site name. Change it (and everything else about the site) in **`site.config.js`**.
 
 ---
 
@@ -189,8 +189,8 @@ https://<cloudflareProject>.pages.dev
 
 **f)** Put that address in `site.config.js` → `url`, then push again. SEO tags and the sitemap use it.
 
-> If the name is already used by someone else, Cloudflare adds a short suffix (this site lives at
-> `https://playnook-3we.pages.dev`). The exact address is printed at the end of the
+> If the name is already used by someone else, Cloudflare adds a short suffix (for example
+> `https://yourname-3we.pages.dev`). The exact address is printed at the end of the
 > "Deploy to Cloudflare Pages" step in the Action log, and in Cloudflare → Workers & Pages.
 
 > If the Action says "NOT deployed because a secret is missing", step d isn't finished yet.
@@ -206,7 +206,7 @@ delete `.github/workflows/deploy.yml`.
 ## 5. Connect your own domain
 
 **Free option:** your site already has a free, real HTTPS address: `https://<cloudflareProject>.pages.dev`.
-If you want a free domain name of your own, you can register one like `playnook.eu.org` at
+If you want a free domain name of your own, you can register one like `plinkora.eu.org` at
 <https://nic.eu.org> (free, but approval can take days or weeks). When it's approved, point it at
 Cloudflare (step 2 below) and change `url` in `site.config.js`. Note that AdSense usually
 wants a top-level domain you own (like `.com`), so for ads a paid domain (~$10/year) is the safer choice.
@@ -215,7 +215,7 @@ wants a top-level domain you own (like `.com`), so for ads a paid domain (~$10/y
 
 1. Buy a domain from any registrar (Cloudflare Registrar sells at cost).
 2. In Cloudflare: **Workers & Pages** → your project → **Custom domains** → **Set up a custom domain**,
-   then type your domain (for example `playnook.com`) and follow the steps. If the domain is on
+   then type your domain (for example `plinkora.com`) and follow the steps. If the domain is on
    Cloudflare, the DNS is set up for you. If not, add the CNAME record it shows at your registrar.
 3. Optionally add `www.yourdomain.com` too.
 4. Update `url` in `site.config.js` to `https://yourdomain.com` and push.
