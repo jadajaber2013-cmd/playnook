@@ -189,6 +189,10 @@ https://<cloudflareProject>.pages.dev
 
 **f)** Put that address in `site.config.js` → `url`, then push again. SEO tags and the sitemap use it.
 
+> If the name is already used by someone else, Cloudflare adds a short suffix (this site lives at
+> `https://playnook-3we.pages.dev`). The exact address is printed at the end of the
+> "Deploy to Cloudflare Pages" step in the Action log, and in Cloudflare → Workers & Pages.
+
 > If the Action says "NOT deployed because a secret is missing", step d isn't finished yet.
 > If the project name is already taken on Cloudflare, change `cloudflareProject` to something unique.
 

@@ -130,6 +130,9 @@ write("_headers", `/*
   Cache-Control: public, max-age=604800
 
 # The raw game files should not appear in Google on their own — only the game pages.
+/games/*/play/
+  X-Robots-Tag: noindex
+
 /games/*/play/*
   X-Robots-Tag: noindex
 `);

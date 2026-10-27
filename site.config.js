@@ -14,7 +14,7 @@ module.exports = {
   // The full address of your live site, WITHOUT a trailing slash.
   // Change this once you have a domain (or your *.pages.dev address).
   // It is used for SEO tags, the sitemap and robots.txt.
-  url: "https://playnook.pages.dev",
+  url: "https://playnook-3we.pages.dev",
 
   // Shown on the Contact and Privacy pages.
   contactEmail: "hello@example.com",
