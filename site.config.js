@@ -57,6 +57,10 @@ module.exports = {
     }
   },
 
+  // Optional: Google Search Console verification code — just the "content" value from
+  // <meta name="google-site-verification" content="...">. Leave "" if you don't use it.
+  googleSiteVerification: "jIor2GMG8Vmq-GRRpOqS2h5vA3Q59W8fBCQICXzsvE0",
+
   // Optional: free, cookie-less Cloudflare Web Analytics.
   // Paste the token from Cloudflare dashboard > Analytics > Web Analytics.
   cloudflareAnalyticsToken: ""

@@ -33,7 +33,7 @@ function makeTemplates(config, ctx) {
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(truncate(description, 160))}">
 <link rel="canonical" href="${esc(abs(path))}">
-${noindex ? '<meta name="robots" content="noindex,follow">\n' : ""}<meta name="theme-color" content="#7c5cff">
+${noindex ? '<meta name="robots" content="noindex,follow">\n' : ""}${config.googleSiteVerification ? `<meta name="google-site-verification" content="${esc(config.googleSiteVerification)}">\n` : ""}<meta name="theme-color" content="#7c5cff">
 <meta property="og:site_name" content="${esc(config.name)}">
 <meta property="og:type" content="${type}">
 <meta property="og:title" content="${esc(title || config.name)}">
