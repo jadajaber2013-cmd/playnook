@@ -49,11 +49,13 @@ function mix(a, b, t) {
 
 class Img {
   // width/height are the FINAL size; drawing coordinates use final-size units.
-  constructor(width, height) {
+  constructor(width, height, scale = 1) {
     this.width = width;
     this.height = height;
-    this.w = width * SS;
-    this.h = height * SS;
+    this.scale = scale; // output pixels per drawing unit (2 = double resolution)
+    this.k = SS * scale;
+    this.w = width * this.k;
+    this.h = height * this.k;
     this.data = new Uint8ClampedArray(this.w * this.h * 4);
   }
 
@@ -69,11 +71,12 @@ class Img {
   // Generic: fill every pixel in a box where test(px,py) is true (final units).
   _fill(x0, y0, x1, y1, color, test) {
     const col = parseColor(color);
-    const X0 = Math.max(0, Math.floor(x0 * SS)), Y0 = Math.max(0, Math.floor(y0 * SS));
-    const X1 = Math.min(this.w, Math.ceil(x1 * SS)), Y1 = Math.min(this.h, Math.ceil(y1 * SS));
+    const k = this.k;
+    const X0 = Math.max(0, Math.floor(x0 * k)), Y0 = Math.max(0, Math.floor(y0 * k));
+    const X1 = Math.min(this.w, Math.ceil(x1 * k)), Y1 = Math.min(this.h, Math.ceil(y1 * k));
     for (let y = Y0; y < Y1; y++)
       for (let x = X0; x < X1; x++)
-        if (!test || test((x + 0.5) / SS, (y + 0.5) / SS)) this._blend(x, y, col);
+        if (!test || test((x + 0.5) / k, (y + 0.5) / k)) this._blend(x, y, col);
   }
 
   gradient(c1, c2, diagonal = true) {
@@ -169,7 +172,7 @@ class Img {
 
   // Encode as PNG (downsampling the 2x buffer first).
   toPNG() {
-    const W = this.width, H = this.height, raw = Buffer.alloc((W * 3 + 1) * H);
+    const W = this.width * this.scale, H = this.height * this.scale, raw = Buffer.alloc((W * 3 + 1) * H);
     for (let y = 0; y < H; y++) {
       raw[y * (W * 3 + 1)] = 0;
       for (let x = 0; x < W; x++) {

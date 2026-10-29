@@ -79,7 +79,7 @@
     if (banner) { banner.l -= dt; const s = 1 + Math.max(0, banner.l - 1.6) * 2; x.save(); x.translate(W / 2, H / 2); x.scale(s, s); x.font = `900 ${56 * S}px system-ui`; x.fillStyle = "#7c5cff"; x.strokeStyle = "#fff"; x.lineWidth = 8; x.strokeText(banner.t, 0, 0); x.fillText(banner.t, 0, 0); x.restore(); if (banner.l <= 0) banner = null; }
   }
   let last = 0, kbd = false; function loop(now) { const dt = Math.min(0.04, (now - last) / 1000 || 0); last = now; draw(dt); requestAnimationFrame(loop); }
-  c.addEventListener("pointerdown", (e) => { kbd = false; for (let i = pieces.length - 1; i >= 0; i--) { const p = pieces[i]; if (!p.placed && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 55 * S) { drag = { p, dx: p.x - e.clientX, dy: p.y - e.clientY }; c.setPointerCapture(e.pointerId); tone(400, 0.05); return; } } });
+  c.addEventListener("pointerdown", (e) => { kbd = false; for (let i = pieces.length - 1; i >= 0; i--) { const p = pieces[i]; if (!p.placed && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 55 * S) { drag = { p, dx: p.x - e.clientX, dy: p.y - e.clientY }; try { c.setPointerCapture(e.pointerId); } catch (er) {} tone(400, 0.05); return; } } });
   c.addEventListener("pointermove", (e) => { if (drag) { drag.p.x = e.clientX + drag.dx; drag.p.y = e.clientY + drag.dy; } });
   c.addEventListener("pointerup", () => { if (drag) { const p = drag.p; drag = null; drop(p); } });
   addEventListener("keydown", (e) => {

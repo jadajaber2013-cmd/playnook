@@ -71,7 +71,7 @@
     x.font = `${s}px system-ui`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(stamp, 0, 0); x.restore();
   }
   c.addEventListener("pointerdown", (e) => {
-    c.setPointerCapture(e.pointerId); save(); const p = pos(e);
+    try { c.setPointerCapture(e.pointerId); } catch (er) {} save(); const p = pos(e);
     if (tool === "stamp") { doStamp(p); return; }
     drawing = true; lastP = p; line(p, [p[0] + 0.1, p[1]], tool === "eraser" ? size * 2 : size);
   });

@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Chess</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: radial-gradient(ellipse at top, #2d2346, #120e22); color: #fff; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #app { height: 100%; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 10px; box-sizing: border-box; }
+  #side { display: flex; flex-direction: column; gap: 10px; width: 250px; max-height: 100%; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btn { border: 0; border-radius: 999px; padding: 7px 12px; background: #ffffff1a; color: #fff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; transition: background .15s, transform .15s; }
+  .btn:hover { background: #ffffff30; }
+  .btn:active { transform: scale(.95); }
+  .btn.on { background: #ffd23f; color: #3a2400; }
+  #status { font-weight: 900; font-size: 17px; min-height: 2.6em; line-height: 1.3; }
+  #status small { display: block; font-size: 12px; font-weight: 600; opacity: .75; }
+  #moves { flex: 1; min-height: 60px; max-height: 220px; overflow-y: auto; background: #00000033; border-radius: 12px; padding: 8px 10px; font: 600 13px/1.7 ui-monospace, Consolas, monospace; }
+  #moves span { display: inline-block; min-width: 54px; }
+  #moves b { opacity: .5; display: inline-block; min-width: 26px; }
+  .caps { min-height: 22px; font-size: 20px; letter-spacing: -2px; line-height: 1; }
+  #boardWrap { position: relative; }
+  #board { display: grid; grid-template-columns: repeat(8, var(--s)); grid-template-rows: repeat(8, var(--s)); border-radius: 10px; overflow: hidden; box-shadow: 0 24px 60px #0009, 0 0 0 6px #4a3a66; }
+  .sq { position: relative; display: grid; place-items: center; cursor: pointer; }
+  .sq.l { background: #efe0c4; } .sq.d { background: #a87c5a; }
+  .sq.last.l { background: #f3e38a; } .sq.last.d { background: #c9a84a; }
+  .sq.sel { box-shadow: inset 0 0 0 4px #7c5cff; }
+  .sq.cur { box-shadow: inset 0 0 0 4px #2ec4b6; }
+  .sq.check { background: radial-gradient(circle, #ff3b3b 0%, #ff3b3b66 45%, transparent 75%) !important; }
+  .sq .dot { position: absolute; width: 30%; height: 30%; border-radius: 50%; background: #1c163855; pointer-events: none; }
+  .sq .ring { position: absolute; inset: 6%; border-radius: 50%; box-shadow: inset 0 0 0 calc(var(--s) * .07) #1c163855; pointer-events: none; }
+  .co { position: absolute; font: 700 calc(var(--s) * .16)/1 system-ui; opacity: .7; pointer-events: none; }
+  .co.f { right: 4%; bottom: 3%; } .co.r { left: 4%; top: 4%; }
+  .sq.l .co { color: #a87c5a; } .sq.d .co { color: #efe0c4; }
+  .pc { font-size: calc(var(--s) * .78); line-height: 1; pointer-events: none; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", serif; transition: transform .22s cubic-bezier(.2,.8,.2,1); z-index: 1; }
+  .pc.w { color: #fff; text-shadow: 0 0 1px #000, 0 0 1px #000, 0 2px 3px #0008, 1px 0 0 #222, -1px 0 0 #222, 0 1px 0 #222, 0 -1px 0 #222; }
+  .pc.b { color: #1f1a2e; text-shadow: 0 2px 3px #0006, 0 0 1px #fff4; }
+  #promo { position: absolute; inset: 0; display: grid; place-items: center; background: #0009; border-radius: 10px; z-index: 5; }
+  #promo[hidden] { display: none; }
+  #promo div { display: flex; gap: 8px; background: #2d2346; padding: 12px; border-radius: 16px; box-shadow: 0 10px 30px #000a; }
+  #promo button { width: calc(var(--s) * 1.1); height: calc(var(--s) * 1.1); border: 0; border-radius: 12px; background: #efe0c4; cursor: pointer; font-size: calc(var(--s) * .8); }
+  #thinking { position: absolute; left: 50%; top: -14px; transform: translateX(-50%); background: #7c5cff; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; z-index: 4; }
+  #thinking[hidden] { display: none; }
+  @media (max-aspect-ratio: 1/1) { #app { flex-direction: column; gap: 8px; } #side { width: calc(var(--s) * 8 + 12px); gap: 6px; } #moves { max-height: 52px; min-height: 0; flex: none; } #status { min-height: 0; font-size: 15px; } .caps { min-height: 0; font-size: 16px; } #tip { display: none; } .btn { padding: 6px 10px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="boardWrap">
+    <div id="thinking" hidden>Thinking…</div>
+    <div id="board" role="grid" aria-label="Chess board"></div>
+    <div id="promo" hidden><div id="promoIn"></div></div>
+  </div>
+  <div id="side">
+    <div class="row" id="levels"></div>
+    <div id="status">Your move<small>You play White</small></div>
+    <div class="caps" id="capB"></div>
+    <div id="moves"></div>
+    <div class="caps" id="capW"></div>
+    <div class="row"><button class="btn" id="new">↻ New game</button><button class="btn" id="undo">↶ Undo</button><button class="btn" id="side2">⇅ Play Black</button></div>
+    <div id="tip" style="font-size:11px;opacity:.6">Tap a piece, then a square · Keyboard: arrows move, Space selects, U undo, N new</div>
+  </div>
+</div>
+<script>
+// ===================== Engine (also runs inside a Web Worker) =====================
+function ENGINE() {
+  const VAL = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+  const PST = {
+    p: [0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
+    n: [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+    b: [-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
+    r: [0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
+    q: [-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
+    k: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20],
+    ke: [-50,-40,-30,-20,-20,-30,-40,-50,-30,-20,-10,0,0,-10,-20,-30,-30,-10,20,30,30,20,-10,-30,-30,-10,30,40,40,30,-10,-30,-30,-10,30,40,40,30,-10,-30,-30,-10,20,30,30,20,-10,-30,-30,-30,0,0,0,0,-30,-30,-50,-30,-30,-30,-30,-30,-30,-50]
+  };
+  const KN = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+  const KG = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+  const DI = [[-1,-1],[-1,1],[1,-1],[1,1]], OR = [[-1,0],[1,0],[0,-1],[0,1]];
+  const colorOf = (p) => (p ? (p < "a" ? "w" : "b") : null);
+  const lower = (p) => p.toLowerCase();
+  const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+
+  function start() {
+    const b = "rnbqkbnrpppppppp" + "".padEnd(32, " ") + "PPPPPPPPRNBQKBNR";
+    return { b: b.split("").map((ch) => (ch === " " ? "" : ch)), turn: "w", castle: "KQkq", ep: -1, half: 0, full: 1 };
+  }
+  function kingSq(b, col) { const k = col === "w" ? "K" : "k"; return b.indexOf(k); }
+  function attacked(b, sq, by) {
+    const r = sq >> 3, c = sq & 7, W = by === "w";
+    const pr = W ? r + 1 : r - 1;
+    for (const dc of [-1, 1]) if (inB(pr, c + dc) && b[pr * 8 + c + dc] === (W ? "P" : "p")) return true;
+    for (const [dr, dc] of KN) if (inB(r + dr, c + dc) && b[(r + dr) * 8 + c + dc] === (W ? "N" : "n")) return true;
+    for (const [dr, dc] of KG) if (inB(r + dr, c + dc) && b[(r + dr) * 8 + c + dc] === (W ? "K" : "k")) return true;
+    for (const [dirs, set] of [[DI, W ? "BQ" : "bq"], [OR, W ? "RQ" : "rq"]])
+      for (const [dr, dc] of dirs) {
+        let rr = r + dr, cc = c + dc;
+        while (inB(rr, cc)) { const p = b[rr * 8 + cc]; if (p) { if (set.includes(p)) return true; break; } rr += dr; cc += dc; }
+      }
+    return false;
+  }
+  function gen(st, capsOnly) {
+    const { b, turn } = st, out = [], W = turn === "w", opp = W ? "b" : "w";
+    for (let sq = 0; sq < 64; sq++) {
+      const p = b[sq]; if (!p || colorOf(p) !== turn) continue;
+      const r = sq >> 3, c = sq & 7, t = lower(p);
+      const add = (to, extra) => { const cap = b[to]; if (capsOnly && !cap && !(extra && (extra.ep || extra.promo))) return; out.push(Object.assign({ from: sq, to, piece: t, cap: cap ? lower(cap) : "" }, extra)); };
+      if (t === "p") {
+        const dir = W ? -1 : 1, nr = r + dir, last = W ? 0 : 7, startR = W ? 6 : 1;
+        if (inB(nr, c) && !b[nr * 8 + c]) {
+          if (nr === last) for (const pr of "qrbn") add(nr * 8 + c, { promo: pr });
+          else { add(nr * 8 + c); if (r === startR && !b[(r + 2 * dir) * 8 + c]) add((r + 2 * dir) * 8 + c, { dbl: true }); }
+        }
+        for (const dc of [-1, 1]) {
+          if (!inB(nr, c + dc)) continue; const to = nr * 8 + c + dc;
+          if (b[to] && colorOf(b[to]) === opp) { if (nr === last) for (const pr of "qrbn") add(to, { promo: pr }); else add(to); }
+          else if (to === st.ep) add(to, { ep: true, cap: "p" });
+        }
+      } else if (t === "n" || t === "k") {
+        for (const [dr, dc] of t === "n" ? KN : KG) { const rr = r + dr, cc = c + dc; if (!inB(rr, cc)) continue; const q = b[rr * 8 + cc]; if (!q || colorOf(q) === opp) add(rr * 8 + cc); }
+        if (t === "k" && !capsOnly) {
+          const home = W ? 60 : 4, ks = W ? "K" : "k", qs = W ? "Q" : "q";
+          if (sq === home && !attacked(b, home, opp)) {
+            if (st.castle.includes(ks) && !b[home + 1] && !b[home + 2] && b[home + 3] === (W ? "R" : "r") && !attacked(b, home + 1, opp) && !attacked(b, home + 2, opp)) add(home + 2, { castle: "k" });
+            if (st.castle.includes(qs) && !b[home - 1] && !b[home - 2] && !b[home - 3] && b[home - 4] === (W ? "R" : "r") && !attacked(b, home - 1, opp) && !attacked(b, home - 2, opp)) add(home - 2, { castle: "q" });
+          }
+        }
+      } else {
+        const dirs = t === "b" ? DI : t === "r" ? OR : DI.concat(OR);
+        for (const [dr, dc] of dirs) {
+          let rr = r + dr, cc = c + dc;
+          while (inB(rr, cc)) { const q = b[rr * 8 + cc]; if (!q) add(rr * 8 + cc); else { if (colorOf(q) === opp) add(rr * 8 + cc); break; } rr += dr; cc += dc; }
+        }
+      }
+    }
+    return out;
+  }
+  function make(st, m) {
+    const b = st.b.slice(), W = st.turn === "w", p = b[m.from];
+    b[m.to] = m.promo ? (W ? m.promo.toUpperCase() : m.promo) : p; b[m.from] = "";
+    if (m.ep) b[m.to + (W ? 8 : -8)] = "";
+    if (m.castle) { const home = W ? 60 : 4; if (m.castle === "k") { b[home + 1] = b[home + 3]; b[home + 3] = ""; } else { b[home - 1] = b[home - 4]; b[home - 4] = ""; } }
+    let cs = st.castle;
+    if (m.piece === "k") cs = cs.replace(W ? /[KQ]/g : /[kq]/g, "");
+    for (const [sq, ch] of [[63, "K"], [56, "Q"], [7, "k"], [0, "q"]]) if (m.from === sq || m.to === sq) cs = cs.replace(ch, "");
+    return { b, turn: W ? "b" : "w", castle: cs, ep: m.dbl ? (m.from + m.to) >> 1 : -1, half: m.piece === "p" || m.cap ? 0 : st.half + 1, full: st.full + (W ? 0 : 1) };
+  }
+  function legal(st) { return gen(st).filter((m) => { const n = make(st, m); return !attacked(n.b, kingSq(n.b, st.turn), n.turn); }); }
+  function inCheck(st) { return attacked(st.b, kingSq(st.b, st.turn), st.turn === "w" ? "b" : "w"); }
+  function evaluate(st) { // from the side to move's point of view
+    let s = 0, mat = 0;
+    for (let i = 0; i < 64; i++) { const p = st.b[i]; if (p && lower(p) !== "k" && lower(p) !== "p") mat += VAL[lower(p)]; }
+    const endgame = mat < 2600;
+    for (let i = 0; i < 64; i++) {
+      const p = st.b[i]; if (!p) continue;
+      const t = lower(p), w = p < "a", idx = w ? i : i ^ 56, tbl = t === "k" && endgame ? PST.ke : PST[t];
+      s += (w ? 1 : -1) * (VAL[t] + tbl[idx]);
+    }
+    return st.turn === "w" ? s : -s;
+  }
+  const order = (ms) => ms.sort((a, b) => (b.cap ? VAL[b.cap] * 10 - VAL[b.piece] : 0) + (b.promo ? 800 : 0) - ((a.cap ? VAL[a.cap] * 10 - VAL[a.piece] : 0) + (a.promo ? 800 : 0)));
+  let nodes, deadline, stop;
+  function quiesce(st, a, bt, qd) {
+    nodes++;
+    const stand = evaluate(st);
+    if (stand >= bt) return bt;
+    if (stand > a) a = stand;
+    if (qd > 6) return a;
+    for (const m of order(gen(st, true))) {
+      const n = make(st, m); if (attacked(n.b, kingSq(n.b, st.turn), n.turn)) continue;
+      const v = -quiesce(n, -bt, -a, qd + 1);
+      if (v >= bt) return bt; if (v > a) a = v;
+    }
+    return a;
+  }
+  function search(st, depth, a, bt, ply, useQ) {
+    if ((++nodes & 1023) === 0 && Date.now() > deadline) stop = true;
+    if (stop) return 0;
+    if (st.half >= 100) return 0;
+    const ms = order(legal(st));
+    if (!ms.length) return inCheck(st) ? -100000 + ply : 0;
+    if (depth <= 0) return useQ ? quiesce(st, a, bt, 0) : evaluate(st);
+    for (const m of ms) {
+      const v = -search(make(st, m), depth - 1, -bt, -a, ply + 1, useQ);
+      if (stop) return 0;
+      if (v >= bt) return bt; if (v > a) a = v;
+    }
+    return a;
+  }
+  // Levels: 1 Beginner, 2 Easy, 3 Medium, 4 Hard, 5 Expert
+  function choose(st, level) {
+    const ms = legal(st); if (!ms.length) return null;
+    if (level === 1) { const caps = ms.filter((m) => m.cap); return (caps.length && Math.random() < 0.35 ? caps : ms)[Math.floor(Math.random() * (caps.length && Math.random() < 0.35 ? caps.length : ms.length))] || ms[0]; }
+    const cfg = { 2: { d: 1, noise: 120, q: false, t: 400 }, 3: { d: 2, noise: 25, q: true, t: 900 }, 4: { d: 4, noise: 6, q: true, t: 1800 }, 5: { d: 6, noise: 0, q: true, t: 2600 } }[level];
+    nodes = 0; stop = false; deadline = Date.now() + cfg.t;
+    let best = order(ms.slice())[0], scored = [];
+    for (let d = 1; d <= cfg.d; d++) {
+      const cur = [];
+      let a = -Infinity;
+      for (const m of order(ms.slice()).sort((x, y) => (y === best) - (x === best))) {
+        // full window at the root so every move gets a true score (the noise below compares them)
+        const v = -search(make(st, m), d - 1, -Infinity, Infinity, 1, cfg.q);
+        if (stop) break;
+        cur.push({ m, v }); if (v > a) a = v;
+      }
+      if (stop && d > 1) break;
+      scored = cur; cur.sort((x, y) => y.v - x.v); if (cur.length) best = cur[0].m;
+      if (cur.length && cur[0].v > 90000) break;
+    }
+    if (cfg.noise && scored.length) { const noisy = scored.map((s) => ({ m: s.m, v: s.v + (Math.random() - 0.5) * 2 * cfg.noise })); noisy.sort((x, y) => y.v - x.v); return noisy[0].m; }
+    return best;
+  }
+  return { start, legal, make, inCheck, attacked, kingSq, choose, colorOf };
+}
+
+// ===================== Game UI =====================
+(() => {
+  const E = ENGINE();
+  const LEVELS = ["Beginner", "Easy", "Medium", "Hard", "Expert"];
+  const GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+  const boardEl = document.getElementById("board"), statusEl = document.getElementById("status"), movesEl = document.getElementById("moves");
+  let st, hist, keys, level = 3, human = "w", sel = -1, legalMoves = [], lastMv = null, over = false, busy = false, cur = 52, kbd = false, sqs = [], sizePx = 60, pendingPromo = null, sanList = [];
+  try { level = +localStorage.getItem("chess-level") || 3; human = localStorage.getItem("chess-side") || "w"; } catch (e) {}
+  let worker = null;
+  try {
+    const src = `const E = (${ENGINE.toString()})(); onmessage = (e) => postMessage(E.choose(e.data.st, e.data.level));`;
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+  } catch (e) { worker = null; }
+
+  // level buttons
+  const lv = document.getElementById("levels");
+  LEVELS.forEach((name, i) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = name; b.onclick = () => { level = i + 1; try { localStorage.setItem("chess-level", level); } catch (er) {} syncLevels(); if (!hist.length || over) newGame(); }; lv.appendChild(b); });
+  const syncLevels = () => [...lv.children].forEach((b, i) => b.classList.toggle("on", i + 1 === level));
+
+  function layout() {
+    const portrait = innerHeight > innerWidth;
+    sizePx = Math.floor(Math.min(portrait ? (innerWidth - 24) / 8 : (innerWidth - 300) / 8, portrait ? (innerHeight - 230) / 8 : (innerHeight - 30) / 8, 84));
+    sizePx = Math.max(32, sizePx);
+    document.documentElement.style.setProperty("--s", sizePx + "px");
+  }
+  function build() {
+    boardEl.innerHTML = ""; sqs = [];
+    for (let v = 0; v < 64; v++) {
+      const d = document.createElement("div"); d.className = "sq"; d.dataset.v = v;
+      d.addEventListener("pointerdown", (e) => { e.preventDefault(); kbd = false; clickSq(viewToSq(v)); });
+      boardEl.appendChild(d); sqs.push(d);
+    }
+  }
+  const viewToSq = (v) => (human === "w" ? v : 63 - v);
+  const sqToView = (s) => (human === "w" ? s : 63 - s);
+  const name = (s) => "abcdefgh"[s & 7] + (8 - (s >> 3));
+  const posKey = (s) => s.b.map((p) => p || ".").join("") + s.turn + s.castle + s.ep;
+
+  function newGame() {
+    st = E.start(); hist = []; keys = { [posKey(st)]: 1 }; sanList = []; sel = -1; lastMv = null; over = false; busy = false; pendingPromo = null;
+    document.getElementById("promo").hidden = true;
+    document.getElementById("side2").textContent = human === "w" ? "⇅ Play Black" : "⇅ Play White";
+    syncLevels(); render(); update();
+    if (st.turn !== human) setTimeout(cpuMove, 400);
+  }
+  function san(prev, m, next) {
+    let s;
+    if (m.castle) s = m.castle === "k" ? "O-O" : "O-O-O";
+    else {
+      const P = m.piece === "p" ? "" : m.piece.toUpperCase();
+      s = P + (m.cap ? (m.piece === "p" ? name(m.from)[0] : "") + "x" : "") + name(m.to) + (m.promo ? "=" + m.promo.toUpperCase() : "");
+    }
+    if (E.inCheck(next)) s += E.legal(next).length ? "+" : "#";
+    return s;
+  }
+  function play(m, animate = true) {
+    const prev = st; hist.push({ st, lastMv, san: sanList.length });
+    const fromEl = sqs[sqToView(m.from)].querySelector(".pc"), fromRect = fromEl && fromEl.getBoundingClientRect();
+    st = E.make(st, m); lastMv = [m.from, m.to]; sel = -1;
+    sanList.push(san(prev, m, st));
+    const k = posKey(st); keys[k] = (keys[k] || 0) + 1;
+    tone(m.cap ? 300 : 520, m.cap ? 0.12 : 0.06);
+    render();
+    if (animate && fromRect) {
+      const el = sqs[sqToView(m.to)].querySelector(".pc");
+      if (el) { const r = el.getBoundingClientRect(); el.style.transition = "none"; el.style.transform = `translate(${fromRect.left - r.left}px, ${fromRect.top - r.top}px)`; void el.offsetWidth; el.style.transition = ""; el.style.transform = ""; }
+    }
+    update();
+  }
+  function update() {
+    const moves = E.legal(st), chk = E.inCheck(st), me = st.turn === human;
+    const k = posKey(st);
+    let msg = "", sub = "";
+    if (!moves.length) { over = true; if (chk) { msg = me ? "😢 Checkmate — you lose" : "🏆 Checkmate — you win!"; tone(me ? 150 : 880, 0.4); } else msg = "🤝 Stalemate — draw"; sub = "Press N or ↻ for a new game"; }
+    else if (st.half >= 100) { over = true; msg = "🤝 Draw (50-move rule)"; }
+    else if (keys[k] >= 3) { over = true; msg = "🤝 Draw (repetition)"; }
+    else if (insufficient()) { over = true; msg = "🤝 Draw (not enough pieces)"; }
+    else { msg = me ? (chk ? "⚠️ Check! Your move" : "Your move") : "Computer is thinking…"; sub = `You play ${human === "w" ? "White" : "Black"} · ${LEVELS[level - 1]}`; }
+    statusEl.innerHTML = `${msg}<small>${sub}</small>`;
+    // move list
+    movesEl.innerHTML = sanList.map((s, i) => (i % 2 === 0 ? `<b>${i / 2 + 1}.</b>` : "") + `<span>${s}</span>` + (i % 2 ? "<br>" : "")).join("");
+    movesEl.scrollTop = movesEl.scrollHeight;
+    // captured pieces
+    const count = (col) => { const start = { p: 8, n: 2, b: 2, r: 2, q: 1 }; for (const p of st.b) if (p && E.colorOf(p) === col && start[p.toLowerCase()] !== undefined) start[p.toLowerCase()]--; return Object.entries(start).flatMap(([t, n]) => Array(Math.max(0, n)).fill(GLYPH[t])).join(""); };
+    document.getElementById("capW").textContent = count("b"); document.getElementById("capB").textContent = count("w");
+    document.getElementById("capW").style.color = "#1f1a2e"; document.getElementById("capW").style.textShadow = "0 0 1px #fff8";
+    if (!over && st.turn !== human) setTimeout(cpuMove, 250);
+  }
+  function insufficient() { const rest = st.b.filter((p) => p && p.toLowerCase() !== "k").map((p) => p.toLowerCase()); return !rest.length || (rest.length === 1 && "bn".includes(rest[0])); }
+  function cpuMove() {
+    if (over || busy || st.turn === human) return;
+    busy = true; document.getElementById("thinking").hidden = false;
+    const t0 = Date.now(), snap = st;
+    const done = (m) => {
+      const wait = Math.max(0, 450 - (Date.now() - t0));
+      setTimeout(() => { document.getElementById("thinking").hidden = true; busy = false; if (st !== snap || !m) return; const real = E.legal(st).find((x) => x.from === m.from && x.to === m.to && (x.promo || "") === (m.promo || "")); if (real) play(real); }, wait);
+    };
+    if (worker) { worker.onmessage = (e) => done(e.data); worker.postMessage({ st, level }); }
+    else setTimeout(() => done(E.choose(st, level)), 30);
+  }
+  function clickSq(s) {
+    if (over || busy || st.turn !== human || pendingPromo) return;
+    const p = st.b[s];
+    if (sel >= 0) {
+      const opts = legalMoves.filter((m) => m.to === s);
+      if (opts.length) {
+        if (opts[0].promo) return askPromo(opts);
+        return play(opts[0]);
+      }
+    }
+    if (p && E.colorOf(p) === human) { sel = s; legalMoves = E.legal(st).filter((m) => m.from === s); tone(700, 0.03); }
+    else { sel = -1; legalMoves = []; }
+    render();
+  }
+  function askPromo(opts) {
+    pendingPromo = opts; const box = document.getElementById("promoIn"); box.innerHTML = "";
+    for (const t of "qrbn") { const b = document.createElement("button"); b.innerHTML = `<span class="pc ${human}">${GLYPH[t]}</span>`; b.onclick = () => { document.getElementById("promo").hidden = true; const m = pendingPromo.find((x) => x.promo === t); pendingPromo = null; play(m); }; box.appendChild(b); }
+    document.getElementById("promo").hidden = false;
+  }
+  function render() {
+    const chkSq = E.inCheck(st) ? E.kingSq(st.b, st.turn) : -1, targets = new Set(legalMoves.map((m) => m.to));
+    for (let v = 0; v < 64; v++) {
+      const s = viewToSq(v), d = sqs[v], r = s >> 3, c = s & 7, p = st.b[s];
+      d.className = "sq " + ((r + c) % 2 ? "d" : "l") + (lastMv && lastMv.includes(s) ? " last" : "") + (s === sel ? " sel" : "") + (s === chkSq ? " check" : "") + (kbd && v === cur ? " cur" : "");
+      let html = p ? `<span class="pc ${E.colorOf(p)}">${GLYPH[p.toLowerCase()]}︎</span>` : "";
+      if (sel >= 0 && targets.has(s)) html += p ? '<span class="ring"></span>' : '<span class="dot"></span>';
+      const vr = v >> 3, vc = v & 7;
+      if (vc === 0) html += `<span class="co r">${8 - r}</span>`;
+      if (vr === 7) html += `<span class="co f">${"abcdefgh"[c]}</span>`;
+      d.innerHTML = html;
+    }
+    if (sel < 0) legalMoves = [];
+  }
+  function undo() {
+    if (busy || !hist.length) return;
+    // take back to the last position where it was the human's turn
+    do { const h = hist.pop(); const k = posKey(st); keys[k]--; st = h.st; lastMv = h.lastMv; sanList.length = h.san; } while (hist.length && st.turn !== human);
+    over = false; sel = -1; render(); update();
+  }
+  let audio; function tone(f, d) { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); const o = audio.createOscillator(), g = audio.createGain(); o.type = "triangle"; o.frequency.value = f; g.gain.setValueAtTime(0.12, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + d + 0.02); } catch (e) {} }
+  document.getElementById("new").onclick = newGame;
+  document.getElementById("undo").onclick = undo;
+  document.getElementById("side2").onclick = () => { human = human === "w" ? "b" : "w"; try { localStorage.setItem("chess-side", human); } catch (e) {} newGame(); };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase(), m = { arrowleft: -1, a: -1, arrowright: 1, d: 1, arrowup: -8, w: -8, arrowdown: 8, s: 8 }[k];
+    if (m) { e.preventDefault(); kbd = true; const nx = cur + m; if (nx >= 0 && nx < 64 && !(Math.abs(m) === 1 && nx >> 3 !== cur >> 3)) cur = nx; render(); }
+    if (k === " " || k === "enter") { e.preventDefault(); kbd = true; clickSq(viewToSq(cur)); }
+    if (k === "u") undo();
+    if (k === "n") newGame();
+    if (k === "escape") { sel = -1; render(); }
+  });
+  addEventListener("resize", layout);
+  layout(); build(); newGame();
+  window.__chess = { E, get st() { return st; } }; // handy for testing
+})();
+</script>
+</body>
+</html>

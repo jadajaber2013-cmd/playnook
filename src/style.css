@@ -276,12 +276,16 @@ th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--lin
   .tabbar .on { color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); }
   .tabbar a:active, .tabbar button:active { transform: scale(.9); }
   .cookie { bottom: calc(86px + env(safe-area-inset-bottom)); }
+  body.playing { padding-bottom: env(safe-area-inset-bottom); }
+  body.playing .tabbar { display: none; }
+  body.playing .player { scroll-margin-top: calc(var(--hdr, 124px) + 8px); height: calc(100vh - var(--hdr, 124px) - 16px); height: calc(100svh - var(--hdr, 124px) - 16px); min-height: 320px; }
   .toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1000px) {
-  .game-layout { grid-template-columns: 1fr; }
+  .game-layout { grid-template-columns: minmax(0, 1fr); }
+  .game-main, .game-side { min-width: 0; }
   .side-list { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
   .hero { grid-template-columns: 1fr; padding-top: 28px; }
   .spotlight { transform: none; max-width: 560px; }

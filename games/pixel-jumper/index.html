@@ -241,7 +241,7 @@
     b.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       if (state !== "play") return proceed();
-      b.setPointerCapture(e.pointerId);
+      try { b.setPointerCapture(e.pointerId); } catch (er) {}
       held.set(e.pointerId, b.dataset.k);
       if (b.dataset.k === "jump") jumpBuffer = 0.12;
       input[b.dataset.k] = true; b.classList.add("on");

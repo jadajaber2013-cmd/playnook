@@ -1,0 +1,17 @@
+{
+  "title": "Chess",
+  "category": "Strategy",
+  "description": "Play classic chess against the computer with five difficulty levels, from a relaxed Beginner to a sharp Expert. Every rule is included — castling, en passant, promotion, check, checkmate and draws — plus move hints, undo and a full move list.",
+  "instructions": [
+    "Tap or click one of your pieces to see where it can go, then tap a highlighted square to move.",
+    "Choose a difficulty: Beginner, Easy, Medium, Hard or Expert.",
+    "Keyboard: arrow keys move the cursor, Space selects and moves, U undoes, N starts a new game.",
+    "Use ⇅ to play as Black, and ↶ Undo to take back your last move.",
+    "Checkmate the computer's king to win!"
+  ],
+  "tags": ["chess", "board game", "vs computer", "classic", "strategy"],
+  "added": "2026-10-29",
+  "popularity": 92,
+  "license": "Original",
+  "source": "Original work"
+}

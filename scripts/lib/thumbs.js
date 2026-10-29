@@ -130,7 +130,7 @@ function placeholder(img, slug, color) {
 }
 
 function drawThumbnail({ slug, title, color = "#7c5cff" }) {
-  const img = new Img(W, H);
+  const img = new Img(W, H, 2); // drawn in 400×300 units, saved at 800×600 for sharp cards on high-DPI screens
   if (ART[slug]) ART[slug](img);
   else placeholder(img, slug, color);
   titleBand(img, title);

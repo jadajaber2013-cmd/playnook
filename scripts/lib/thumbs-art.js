@@ -8,6 +8,20 @@ const ball = (img, x, y, r, col, hi = "#ffffff88") => { img.circle(x, y, r, col)
 const blob = (img, x, y, r, col) => { img.circle(x, y, r, col); img.rect(x - r, y, r * 2, r * 0.5, col); img.circle(x - r * 0.35, y - r * 0.25, r * 0.22, "#fff"); img.circle(x + r * 0.35, y - r * 0.25, r * 0.22, "#fff"); img.circle(x - r * 0.3, y - r * 0.22, r * 0.1, "#111"); img.circle(x + r * 0.4, y - r * 0.22, r * 0.1, "#111"); };
 
 module.exports = {
+  "chess"(img) {
+    img.gradient("#2d2346", "#120e22");
+    for (let r = 0; r < 6; r++) for (let c = 0; c < 10; c++) img.rect(c * 40, r * 40, 40, 40, (r + c) % 2 ? "#a87c5a" : "#efe0c4");
+    const base = (x, y, col, w) => { img.roundRect(x - w, y - 10, w * 2, 12, 4, col); img.roundRect(x - w * 0.7, y - 18, w * 1.4, 10, 3, col); };
+    // white king
+    base(130, 205, "#ffffff", 32); img.polygon([[106, 190], [154, 190], [144, 110], [116, 110]], "#ffffff"); img.roundRect(108, 96, 44, 18, 6, "#ffffff");
+    img.rect(126, 62, 8, 34, "#ffffff"); img.rect(116, 72, 28, 8, "#ffffff");
+    // black queen
+    base(270, 205, "#1f1a2e", 32); img.polygon([[246, 190], [294, 190], [284, 120], [256, 120]], "#1f1a2e"); img.roundRect(250, 106, 40, 18, 6, "#1f1a2e");
+    for (const dx of [-18, -9, 0, 9, 18]) img.circle(270 + dx, 96 - (dx === 0 ? 8 : Math.abs(dx) === 9 ? 4 : 0), 6, "#1f1a2e");
+    // pawns
+    for (const [x, col] of [[200, "#ffffff"], [345, "#1f1a2e"], [55, "#1f1a2e"]]) { base(x, 210, col, 20); img.polygon([[x - 12, 195], [x + 12, 195], [x + 7, 160], [x - 7, 160]], col); img.circle(x, 152, 14, col); }
+    img.ring(130, 140, 70, 4, "#ffd23f88");
+  },
   "asteroid-dodge"(img) {
     sky(img, "#0b0626", "#2a1460");
     for (let i = 0; i < 40; i++) img.circle((i * 97) % 400, (i * 53) % 230, 1 + (i % 3) * 0.6, "#ffffffaa");
@@ -161,7 +175,7 @@ module.exports = {
     img.ring(200, 115, 110, 50, "#3a86ff"); img.ring(200, 115, 106, 42, "#555a66");
     const kart = (_, x, y, col) => { img.rect(x - 14, y - 14, 8, 6, "#222"); img.rect(x + 6, y - 14, 8, 6, "#222"); img.rect(x - 14, y + 8, 8, 6, "#222"); img.rect(x + 6, y + 8, 8, 6, "#222"); img.roundRect(x - 16, y - 9, 32, 18, 6, col); img.circle(x - 2, y, 6, "#fff"); };
     kart(img, 110, 50, "#ff4f7b"); kart(img, 160, 34, "#4dabf7"); kart(img, 260, 36, "#ffd23f"); kart(img, 300, 60, "#51cf66");
-    img.roundRect(185, 190, 34, 30, 6, "#ffb000"); img.text(">>", 202, 200, 2, "#fff");
+    img.roundRect(185, 190, 34, 30, 6, "#ffb000"); img.polygon([[192, 197], [201, 205], [192, 213]], "#fff"); img.polygon([[203, 197], [212, 205], [203, 213]], "#fff");
     img.text("1ST", 60, 150, 4, "#ffffff"); img.circle(340, 180, 14, "#2f9e44");
   },
   "warp-racer"(img) {

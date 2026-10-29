@@ -120,7 +120,7 @@
   addEventListener("keyup", (e) => { const k = MAP[e.key.toLowerCase()]; if (k) keys[k] = false; });
   const held = new Map();
   document.querySelectorAll(".tc button").forEach((b) => {
-    b.addEventListener("pointerdown", (e) => { e.preventDefault(); if (state !== "play") return start(); b.setPointerCapture(e.pointerId); held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); if (state !== "play") return start(); try { b.setPointerCapture(e.pointerId); } catch (er) {} held.set(e.pointerId, b.dataset.k); keys[b.dataset.k] = true; b.classList.add("on"); });
     const up = (e) => { held.delete(e.pointerId); keys[b.dataset.k] = [...held.values()].includes(b.dataset.k); b.classList.toggle("on", keys[b.dataset.k]); };
     b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up);
   });

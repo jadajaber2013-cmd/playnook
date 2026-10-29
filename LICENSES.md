@@ -20,6 +20,7 @@ Gambling, betting and real-money games are never allowed.
 | Bubble Shooter | `games/bubble-shooter/` | The Plinkora team | Original | Original work |
 | Buzzy Bee | `games/buzzy-bee/` | The Plinkora team | Original | Original work |
 | Checkers | `games/checkers/` | The Plinkora team | Original | Original work |
+| Chess | `games/chess/` | The Plinkora team | Original | Original work |
 | Color Echo | `games/color-echo/` | The Plinkora team | Original | Original work |
 | Color Flood | `games/color-flood/` | The Plinkora team | Original | Original work |
 | Counting Fun | `games/counting-fun/` | The Plinkora team | Original | Original work |

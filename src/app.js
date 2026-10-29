@@ -97,6 +97,14 @@
       try { frame.focus(); frame.contentWindow.focus(); } catch (e) {}
     }, { once: true });
     frame.src = frame.getAttribute("data-src");
+    // On phones: hide the bottom tab bar (it would cover the game's touch buttons)
+    // and line the game up right under the header so it fills the screen.
+    if (matchMedia("(max-width: 700px)").matches) {
+      document.body.classList.add("playing");
+      var bar = $(".topbar");
+      if (bar) document.documentElement.style.setProperty("--hdr", bar.offsetHeight + "px");
+      requestAnimationFrame(function () { player.scrollIntoView({ behavior: "smooth", block: "start" }); });
+    }
     if (playBtn) { playBtn.classList.add("leaving"); setTimeout(function () { playBtn.remove(); playBtn = null; }, 500); }
   }
   if (playBtn) playBtn.addEventListener("click", startGame);
